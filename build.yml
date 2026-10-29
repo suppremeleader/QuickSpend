@@ -75,6 +75,19 @@ jobs:
               try { alert(c, body); } catch (Exception e) { }
             }
 
+            static void push(Context c, String from, String body, long ts) {
+              try {
+                SharedPreferences p = c.getSharedPreferences(PREFS, 0);
+                JSONArray q = new JSONArray(p.getString(KEY, "[]"));
+                JSONObject o = new JSONObject();
+                o.put("from", from);
+                o.put("body", body);
+                o.put("ts", ts);
+                q.put(o);
+                p.edit().putString(KEY, q.toString()).apply();
+              } catch (Exception e) { }
+            }
+
             static void alert(Context c, String body) {
               NotificationManager nm = (NotificationManager) c.getSystemService(Context.NOTIFICATION_SERVICE);
               if (Build.VERSION.SDK_INT >= 26) {
@@ -156,6 +169,7 @@ jobs:
           cat > $D/MainActivity.java <<'EOF'
           package com.quickspend.app;
 
+          import android.content.Intent;
           import android.os.Bundle;
           import com.getcapacitor.BridgeActivity;
 
@@ -164,6 +178,22 @@ jobs:
             public void onCreate(Bundle savedInstanceState) {
               registerPlugin(SmsBridgePlugin.class);
               super.onCreate(savedInstanceState);
+              grab(getIntent());
+            }
+
+            @Override
+            protected void onNewIntent(Intent intent) {
+              super.onNewIntent(intent);
+              grab(intent);
+            }
+
+            private void grab(Intent i) {
+              if (i == null || !Intent.ACTION_SEND.equals(i.getAction())) return;
+              String t = i.getStringExtra(Intent.EXTRA_TEXT);
+              if (t != null && t.length() > 0) {
+                SmsReceiver.push(this, "share", t, System.currentTimeMillis());
+              }
+              i.setAction(Intent.ACTION_MAIN);
             }
           }
           EOF
@@ -172,13 +202,20 @@ jobs:
           s = open(p).read()
           perms = '<uses-permission android:name="android.permission.RECEIVE_SMS"/>\n<uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>\n'
           rec = '<receiver android:name=".SmsReceiver" android:exported="true" android:permission="android.permission.BROADCAST_SMS"><intent-filter android:priority="999"><action android:name="android.provider.Telephony.SMS_RECEIVED"/></intent-filter></receiver>\n'
+          share = '<intent-filter><action android:name="android.intent.action.SEND"/><category android:name="android.intent.category.DEFAULT"/><data android:mimeType="text/plain"/></intent-filter>\n'
           if 'SmsReceiver' not in s:
-              s = s.replace('<application', perms + '<application', 1).replace('</application>', rec + '</application>', 1)
+              s = s.replace('<application', perms + '<application', 1).replace('</activity>', share + '</activity>', 1).replace('</application>', rec + '</application>', 1)
           open(p, 'w').write(s)
           PY
+          grep -q RECEIVE_SMS android/app/src/main/AndroidManifest.xml
+          grep -q SmsBridgePlugin android/app/src/main/java/com/quickspend/app/MainActivity.java
+          echo "MANIFEST CHECK OK"
           npx cap sync android
           cd android && chmod +x gradlew && ./gradlew assembleDebug
+          APK=app/build/outputs/apk/debug/app-debug.apk
+          AAPT=$(ls -d $ANDROID_HOME/build-tools/*/aapt 2>/dev/null | tail -1)
+          if [ -n "$AAPT" ]; then $AAPT dump permissions $APK || true; fi
       - uses: actions/upload-artifact@v4
         with:
-          name: quickspend-apk
+          name: quickspend-apk-${{ github.run_number }}
           path: android/app/build/outputs/apk/debug/app-debug.apk
