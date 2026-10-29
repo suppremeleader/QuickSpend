@@ -77,6 +77,9 @@ h1{font-size:30px;font-weight:700;letter-spacing:-.5px;margin-bottom:4px}
 .av{width:52px;height:52px;border-radius:50%;display:grid;place-items:center;font-size:20px;font-weight:700;color:#000;margin:0 auto 5px;border:2px solid transparent;transition:.15s}
 .dl.on .av{border-color:#fff;transform:scale(1.08)}
 .dl.on{color:var(--tx)}
+.fld{width:100%;background:#0d0d11;border:1px solid #2a2a34;border-radius:14px;padding:12px;color:var(--tx);font-size:14px;margin-bottom:10px;outline:0}
+.row2 .fld{flex:1;min-width:0}
+.yr{display:flex;gap:6px}.yc{flex:1;text-align:center;font-size:10px;color:var(--mu)}.yb{height:130px;display:flex;gap:2px;align-items:flex-end;margin-bottom:4px}.yb i{flex:1;border-radius:4px 4px 0 0;min-height:2px}
 @media(max-width:600px){body{padding:0;gap:6px;justify-content:flex-start;padding-top:env(safe-area-inset-top,0)}.phone{width:100%;max-height:none;height:calc(100% - 44px);border-radius:0;border:0}}
 </style></head><body>
 <div class="demo"><span>Demo:</span><button onclick="sms()">📩 Simulate bank SMS</button></div>
@@ -123,13 +126,13 @@ const $=s=>document.querySelector(s),fm=n=>'₹'+Number(n).toLocaleString('en-IN
 const isOut=t=>t==='Expense'||t==='Lent', cut=t=>t==='Income'||t==='Borrowed';
 
 function render(){
- const inn=tx.filter(x=>x.t==='Income').reduce((s,x)=>s+x.a,0), out=tx.filter(x=>x.t==='Expense').reduce((s,x)=>s+x.a,0);
- const bal=tx.reduce((s,x)=>s+(cut(x.t)?x.a:-x.a),0);
- $('#s-home').innerHTML=`<h1>Hello 👋</h1><div class="sub">October overview</div>
+ persist();runRecur();const t=T(),now=new Date(),mt=t.filter(x=>inM(x,now.getFullYear(),now.getMonth()));const inn=mt.filter(x=>x.t==='Income').reduce((s,x)=>s+x.a,0), out=mt.filter(x=>x.t==='Expense').reduce((s,x)=>s+x.a,0);
+ const bal=t.reduce((s,x)=>s+(cut(x.t)?x.a:-x.a),0);
+ $('#s-home').innerHTML=`<h1>Hello 👋</h1><div class="sub">${MN[now.getMonth()]} overview</div>${accBar()}
  <div class="hero"><small>Balance</small><div class="big">${fm(bal)}</div><div class="row2">
  <div class="pill"><span class="sub" style="margin:0">In</span><b class="pos">${fm(inn)}</b></div>
  <div class="pill"><span class="sub" style="margin:0">Out</span><b>${fm(out)}</b></div></div></div>
- <div class="sec"><span>Recent</span></div>`+tx.slice().reverse().map(x=>item(x)).join('');
+ ${recBlock()}<div class="sec"><span>Recent</span></div>`+t.slice().reverse().map(x=>item(x)).join('');
  $('#s-review').innerHTML=`<h1>To review</h1><div class="sub">Payments waiting for a category</div><div class="hero" style="padding:16px"><small>This month</small><div class="row2" style="margin-top:10px"><div class="pill"><span class="sub" style="margin:0">Income</span><b class="pos">${fm(inn)}</b></div><div class="pill"><span class="sub" style="margin:0">Expenses</span><b>${fm(out)}</b></div></div></div>`+(pending.length?pending.map(p=>`<div class="item" onclick="openSheet(pending.find(z=>z.id==${p.id}))" style="cursor:pointer"><div class="ic">💳</div><div class="m"><div>${p.m}</div><span>${p.d} · tap to sort</span></div><div class="amt">${fm(p.a)}</div><button class="mini" style="color:var(--mu);margin-left:8px" onclick="event.stopPropagation();dismiss(${p.id})">✕</button></div>`).join(''):'<div class="empty">All caught up ✓</div>');
  const bd=$('#bd');bd.style.display=pending.length?'block':'none';bd.textContent=pending.length;
  // friends
@@ -138,7 +141,7 @@ function render(){
  $('#s-friends').innerHTML=`<h1>Friends</h1><div class="sub">Who owes whom</div><div class="row2" style="margin-bottom:16px"><div class="pill" style="background:var(--card)"><span class="sub" style="margin:0">You get</span><b class="pos">${fm(owed)}</b></div><div class="pill" style="background:var(--card)"><span class="sub" style="margin:0">You owe</span><b style="color:var(--or)">${fm(owe)}</b></div></div>`+
  (names.filter(n=>ppl[n]!==0).map(n=>`<div class="card"><div class="top"><div><div style="font-weight:600">${n}</div><span class="sub" style="margin:0">${ppl[n]>0?'owes you':'you owe'}</span></div><div style="text-align:right"><div class="amt ${ppl[n]>0?'pos':''}" style="${ppl[n]<0?'color:var(--or)':''}">${fm(Math.abs(ppl[n]))}</div><button class="btn" style="margin-top:6px" onclick="settle('${n}')">Mark settled</button></div></div></div>`).join('')||'<div class="empty">No pending balances</div>');
  // insights
- const by={};tx.filter(x=>x.t==='Expense').forEach(x=>by[x.c]=(by[x.c]||0)+x.a);const mx=Math.max(1,...Object.values(by));
+ $('#s-insights').innerHTML=insights();return;
  $('#s-insights').innerHTML=`<h1>Insights</h1><div class="sub">Where your money went</div><div class="hero"><small>Spent this month</small><div class="big" style="margin-bottom:0">${fm(out)}</div></div>`+
  Object.entries(by).sort((a,b)=>b[1]-a[1]).map(([c,v])=>`<div style="margin-bottom:16px"><div style="display:flex;justify-content:space-between;font-size:14px"><span>${ICON[c]||''} ${c}</span><b>${fm(v)}</b></div><div class="bar"><i style="width:${v/mx*100}%"></i></div></div>`).join('');
 }
@@ -152,22 +155,46 @@ function sms(){const s=samples[Math.floor(Math.random()*samples.length)];inc={id
  $('#sms').innerHTML=`<b>HDFC Bank · now</b>Rs ${inc.a} debited from A/c XX4821 at ${inc.m.toUpperCase()}. Avl bal Rs 41,230.`;
  $('#sms').classList.add('show');setTimeout(()=>{$('#sms').classList.remove('show');$('#bub').classList.add('show')},2200)}
 
-function openSheet(p){cur={...p,type:'Expense',cat:memory[(p.m||'').toLowerCase()]||null,who:''};editing=!!p.manual;adding=null;paint();$('#dim').classList.add('on');$('#sheet').classList.add('on');$('#bub').classList.remove('show')}
+function openSheet(p){cur={...p,acc:view==='All'?accts[0].n:view,type:'Expense',cat:memory[(p.m||'').toLowerCase()]||null,who:''};editing=!!p.manual;adding=null;paint();$('#dim').classList.add('on');$('#sheet').classList.add('on');$('#bub').classList.remove('show')}
 function closeSheet(){$('#dim').classList.remove('on');$('#sheet').classList.remove('on')}
 function paint(){
  const need=cur.type==='Lent'||cur.type==='Borrowed';
  $('#sheet').innerHTML=`<div class="grab"></div><div class="mer">${cur.manual?'New entry':'Paid to '+cur.m}</div>
  <div class="amtbox">${editing?`<input id="ai" type="number" inputmode="decimal" placeholder="0" value="${cur.a}" oninput="cur.a=this.value">`:`<span>${fm(cur.a)}</span>`}<button class="pen" onclick="editing=!editing;paint()">${editing?'✓':'✏️'}</button></div>
  <div class="seg">${['Expense','Income','Lent','Borrowed'].map(t=>`<div class="${cur.type===t?'on':''}" onclick="cur.type='${t}';cur.cat=null;paint()">${t}</div>`).join('')}</div>
- ${need?`<div class="hd"><span>Friends & family</span><button class="mini" onclick="toggleAdd('cat')">+</button></div>`:''}${need&&adding==='cat'?addbox():''}<div class="chips">${CATS[cur.type].map(c=>`<div class="chip ${cur.cat===c[1]?'on':''}" onclick="cur.cat='${c[1]}';paint()">${c[0]} ${c[1]}</div>`).join('')}</div>
+ ${accts.length>1?`<div class="chips" style="margin-bottom:10px">${accts.map((a,i)=>`<div class="chip ${cur.acc===a.n?'on':''}" onclick="cur.acc=accts[${i}].n;paint()">${a.i} ${a.n}</div>`).join('')}</div>`:''}${need?`<div class="hd"><span>Friends & family</span><button class="mini" onclick="toggleAdd('cat')">+</button></div>`:''}${need&&adding==='cat'?addbox():''}<div class="chips">${CATS[cur.type].map(c=>`<div class="chip ${cur.cat===c[1]?'on':''}" onclick="cur.cat='${c[1]}';paint()">${c[0]} ${c[1]}</div>`).join('')}</div>
  ${need?`<div class="hd"><span>⚡ Speed dial</span><button class="mini" onclick="toggleAdd('dial')">+</button></div>${adding==='dial'?addbox():''}<div class="dial">${speed.map((n,i)=>`<div class="dl ${cur.who===n?'on':''}" onclick="cur.who='${n}';paint()"><div class="av" style="background:${AVC[i%AVC.length]}">${n[0].toUpperCase()}</div>${n}</div>`).join('')}</div>`:''}
- ${cur.cat&&cur.type==='Expense'&&memory[(cur.m||'').toLowerCase()]===cur.cat?'<div class="hint">✨ Remembered from last time</div>':''}
+ ${cur.type==='Expense'?`<div class="hd"><span>🔁 EMI</span><div class="chip ${cur.emi?'on':''}" style="padding:5px 12px;font-size:12px" onclick="cur.emi=cur.emi?0:12;paint()">${cur.emi?'On':'Off'}</div></div>${cur.emi?`<input class="fld" type="number" min="2" placeholder="Number of months" value="${cur.emi}" oninput="cur.emi=this.value"><div class="hint">This amount is the monthly instalment. It repeats automatically.</div>`:''}`:''}${cur.cat&&cur.type==='Expense'&&memory[(cur.m||'').toLowerCase()]===cur.cat?'<div class="hint">✨ Remembered from last time</div>':''}
  <div class="acts"><button class="later" onclick="later()">Later</button><button class="save" onclick="save()">Save</button></div>`}
 function save(){const a=Number(cur.a);if(!a){editing=true;paint();return}
  const cat=cur.cat||(CATS[cur.type][0][1]);const who=(cur.type==='Lent'||cur.type==='Borrowed')?(cur.who||'Friend'):null;
- tx.push({id:++sid,t:cur.type,m:who||cur.m,a,c:cat,d:'Today',who,settled:0});
+ tx.push({id:++sid,t:cur.type,m:who||cur.m,a,c:cat,d:'Today',who,settled:0,ts:Date.now(),acc:cur.acc});
  if(cur.type==='Expense'&&cur.m&&!cur.manual)memory[cur.m.toLowerCase()]=cat;
+ const em=Math.floor(Number(cur.emi));if(cur.type==='Expense'&&em>1){const n=new Date();recur.push({t:'Expense',m:(cur.manual?cat:cur.m)+' EMI',a,c:cat,day:Math.min(n.getDate(),28),left:em-1,acc:cur.acc,last:n.getFullYear()*12+n.getMonth()})}
  pending=pending.filter(p=>p.id!==cur.id);closeSheet();render()}
+const MN=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+let accts=[{n:'Main account',i:'🏦'},{n:'Cash',i:'👛'}],view='All',rng='Month',recur=[],ym=[new Date().getFullYear(),new Date().getMonth()],addA=false,rc={};
+const T=()=>tx.filter(x=>view==='All'||(x.acc||accts[0].n)===view);
+const inM=(x,y,m)=>{const d=new Date(x.ts);return d.getFullYear()===y&&(m<0||d.getMonth()===m)};
+function persist(){try{localStorage.setItem('qs1',JSON.stringify({tx,pending,memory,speed,accts,recur,sid,cats:[CATS.Lent,CATS.Borrowed]}))}catch(e){}}
+function load(){try{const d=JSON.parse(localStorage.getItem('qs1'));if(d){tx=d.tx;pending=d.pending;Object.assign(memory,d.memory);speed.splice(0,speed.length,...d.speed);accts=d.accts;recur=d.recur;sid=d.sid;CATS.Lent=d.cats[0];CATS.Borrowed=d.cats[1]}}catch(e){}
+ const n=new Date();tx.forEach(x=>{if(!x.ts){const dd=Math.min(parseInt(x.d)||n.getDate(),28);x.ts=new Date(n.getFullYear(),n.getMonth(),x.d==='Today'?n.getDate():dd).getTime()}if(!x.acc)x.acc=accts[0].n})}
+function runRecur(){const n=new Date(),k=n.getFullYear()*12+n.getMonth();recur.forEach(r=>{if(r.left===0||r.last===k||n.getDate()<r.day)return;r.last=k;if(r.left>0)r.left--;tx.push({id:++sid,t:r.t,m:r.m,a:r.a,c:r.c||(r.t==='Income'?'Salary':'Bills'),d:'Today',ts:n.getTime(),acc:r.acc})})}
+let editA=false;
+function editBox(){return `<div class="card">${accts.map((a,i)=>`<div class="addrow" style="margin:0 0 8px"><span style="align-self:center">${a.i}</span><input value="${a.n}" onchange="renAcc(${i},this.value)"></div>`).join('')}<div class="hint" style="margin:0">Type a new name, then tap outside the box</div></div>`}
+function renAcc(i,v){v=v.trim().replace(/["'<>]/g,'');if(!v||accts.some((a,j)=>j!==i&&a.n===v))return render();const o=accts[i].n;tx.forEach(x=>{if(x.acc===o)x.acc=v});recur.forEach(r=>{if(r.acc===o)r.acc=v});if(view===o)view=v;accts[i].n=v;render()}
+function accBar(){return `<div class="chips" style="margin-bottom:14px">${['All',...accts.map(a=>a.n)].map((n,i)=>`<div class="chip ${view===n?'on':''}" onclick="view=${i?'accts['+(i-1)+'].n':`'All'`};render()">${i?accts[i-1].i+' ':''}${n}</div>`).join('')}<div class="chip" onclick="addA=!addA;editA=false;render()">+</div><div class="chip" onclick="editA=!editA;addA=false;render()">✏️</div></div>${editA?editBox():''}${addA?`<div class="addrow"><input id="an" placeholder="Account or person, e.g. Mom wallet" onkeydown="if(event.key==='Enter')newAcc()"><button class="btn" onclick="newAcc()">Add</button></div>`:''}`}
+function newAcc(){const v=$('#an').value.trim().replace(/["'<>]/g,'');if(v&&!accts.find(a=>a.n===v)){accts.push({n:v,i:'👤'});view=v}addA=false;render()}
+function recBlock(){return `<div class="sec"><span>Recurring · EMI</span><button class="mini" onclick="openRec()">+</button></div>`+(recur.length?recur.map((r,i)=>`<div class="item"><div class="ic">🔁</div><div class="m"><div>${r.m}</div><span>${r.t==='Income'?'Income':'Expense'} · day ${r.day}${r.left>=0?' · '+r.left+' left':''}</span></div><div class="amt ${r.t==='Income'?'pos':''}">${fm(r.a)}</div><button class="mini" style="color:var(--mu);margin-left:8px" onclick="recur.splice(${i},1);render()">✕</button></div>`).join(''):'<div class="sub" style="margin:0">Rent, EMI, salary… added automatically each month</div>')}
+function openRec(){rc={t:'Expense',m:'',a:'',day:1,left:'',acc:view==='All'?accts[0].n:view};paintRec();$('#dim').classList.add('on');$('#sheet').classList.add('on')}
+function paintRec(){$('#sheet').innerHTML=`<div class="grab"></div><div class="mer">New recurring</div><div class="seg" style="margin-top:12px">${['Expense','Income'].map(t=>`<div class="${rc.t===t?'on':''}" onclick="rc.t='${t}';paintRec()">${t==='Expense'?'Expense / EMI':'Income'}</div>`).join('')}</div><input class="fld" placeholder="Name e.g. Rent, Car EMI" value="${rc.m}" oninput="rc.m=this.value"><input class="fld" type="number" placeholder="Amount ₹" value="${rc.a}" oninput="rc.a=this.value"><div class="row2"><input class="fld" type="number" placeholder="Day of month" value="${rc.day}" oninput="rc.day=this.value"><input class="fld" type="number" placeholder="Months (EMI)" value="${rc.left}" oninput="rc.left=this.value"></div>${accts.length>1?`<div class="chips">${accts.map((a,i)=>`<div class="chip ${rc.acc===a.n?'on':''}" onclick="rc.acc=accts[${i}].n;paintRec()">${a.i} ${a.n}</div>`).join('')}</div>`:''}<div class="hint">Leave months empty for ongoing payments</div><div class="acts"><button class="later" onclick="closeSheet()">Cancel</button><button class="save" onclick="saveRec()">Save</button></div>`}
+function saveRec(){if(!rc.m||!Number(rc.a))return;recur.push({t:rc.t,m:rc.m,a:Number(rc.a),day:Math.min(Math.max(+rc.day||1,1),28),left:rc.left?+rc.left:-1,acc:rc.acc,last:0});closeSheet();render()}
+function stepYm(d){if(rng==='Year')ym[0]+=d;else{ym[1]+=d;if(ym[1]>11)ym=[ym[0]+1,0];if(ym[1]<0)ym=[ym[0]-1,11]}render()}
+function insights(){const t=T(),[y,m]=ym,Y=rng==='Year',per=t.filter(x=>inM(x,y,Y?-1:m)),s=ty=>per.filter(x=>x.t===ty).reduce((a,x)=>a+x.a,0),inn=s('Income'),out=s('Expense');let body='';
+ if(Y){const mo=[...Array(12)].map((_,i)=>{const q=t.filter(x=>inM(x,y,i));return[q.filter(x=>x.t==='Income').reduce((a,x)=>a+x.a,0),q.filter(x=>x.t==='Expense').reduce((a,x)=>a+x.a,0)]});const mx=Math.max(1,...mo.flat());body=`<div class="yr">${mo.map((v,i)=>`<div class="yc"><div class="yb"><i style="height:${v[0]/mx*100}%;background:var(--ac)"></i><i style="height:${v[1]/mx*100}%;background:var(--rd)"></i></div>${MN[i][0]}</div>`).join('')}</div><div class="hint" style="margin-top:10px">Green = income · Red = expenses</div>`}
+ else{const by={};per.filter(x=>x.t==='Expense').forEach(x=>by[x.c]=(by[x.c]||0)+x.a);const mx=Math.max(1,...Object.values(by));body=Object.entries(by).sort((a,b)=>b[1]-a[1]).map(([c,v])=>`<div style="margin-bottom:16px"><div style="display:flex;justify-content:space-between;font-size:14px"><span>${ICON[c]||''} ${c}</span><b>${fm(v)}</b></div><div class="bar"><i style="width:${v/mx*100}%"></i></div></div>`).join('')||'<div class="empty">No expenses this month</div>'}
+ return `<h1>Insights</h1><div class="seg" style="margin:10px 0 14px">${['Month','Year'].map(r=>`<div class="${rng===r?'on':''}" onclick="rng='${r}';render()">${r}</div>`).join('')}</div><div class="sec" style="margin:0 0 12px"><button class="mini" onclick="stepYm(-1)">‹</button><b style="color:var(--tx);font-size:16px">${Y?y:MN[m]+' '+y}</b><button class="mini" onclick="stepYm(1)">›</button></div><div class="hero"><small>Spent</small><div class="big" style="margin-bottom:12px">${fm(out)}</div><div class="row2"><div class="pill"><span class="sub" style="margin:0">Income</span><b class="pos">${fm(inn)}</b></div><div class="pill"><span class="sub" style="margin:0">Saved</span><b>${fm(inn-out)}</b></div></div></div>`+body}
+load();
 function later(){if(!cur.manual&&!pending.find(p=>p.id===cur.id))pending.push({id:cur.id,m:cur.m,a:cur.a,d:'Today'});closeSheet();render()}
 render();
 </script></body></html>
