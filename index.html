@@ -77,6 +77,13 @@ h1{font-size:30px;font-weight:700;letter-spacing:-.5px;margin-bottom:4px}
 .av{width:52px;height:52px;border-radius:50%;display:grid;place-items:center;font-size:20px;font-weight:700;color:#000;margin:0 auto 5px;border:2px solid transparent;transition:.15s}
 .dl.on .av{border-color:#fff;transform:scale(1.08)}
 .dl.on{color:var(--tx)}
+.onb{position:absolute;inset:0;background:var(--bg);z-index:100;display:none;flex-direction:column;align-items:center;justify-content:center;padding:40px 30px;text-align:center}
+.onb.on{display:flex}
+.oe{font-size:84px;margin-bottom:20px}
+.od{color:var(--mu);font-size:15px;line-height:1.5;margin:10px 0 30px;max-width:300px}
+.odots{display:flex;gap:8px;margin-bottom:28px}.odots i{width:8px;height:8px;border-radius:9px;background:#2a2a34}.odots i.on{width:24px;background:var(--ac)}
+.obtn{border:0;border-radius:16px;padding:15px;font-size:15px;font-weight:700;width:100%;max-width:300px;cursor:pointer}
+.oskip{position:absolute;top:56px;right:24px;color:var(--mu);font-size:14px;cursor:pointer;min-height:18px}
 .fld{width:100%;background:#0d0d11;border:1px solid #2a2a34;border-radius:14px;padding:12px;color:var(--tx);font-size:14px;margin-bottom:10px;outline:0}
 .row2 .fld{flex:1;min-width:0}
 .yr{display:flex;gap:6px}.yc{flex:1;text-align:center;font-size:10px;color:var(--mu)}.yb{height:130px;display:flex;gap:2px;align-items:flex-end;margin-bottom:4px}.yb i{flex:1;border-radius:4px 4px 0 0;min-height:2px}
@@ -99,6 +106,7 @@ h1{font-size:30px;font-weight:700;letter-spacing:-.5px;margin-bottom:4px}
     <div class="tab" data-t="friends"><i>⇄</i>Friends</div>
     <div class="tab" data-t="insights"><i>◔</i>Insights</div>
   </div>
+  <div class="onb" id="onb"></div>
   <div class="dim" id="dim" onclick="closeSheet()"></div>
   <div class="sheet" id="sheet"></div>
 </div>
@@ -107,14 +115,8 @@ h1{font-size:30px;font-weight:700;letter-spacing:-.5px;margin-bottom:4px}
 const CATS={Expense:[['🍔','Food'],['🚕','Travel'],['🛍️','Shopping'],['🧾','Bills'],['🎬','Fun'],['💊','Health'],['✨','Other']],
 Income:[['💼','Salary'],['🎁','Gift'],['↩️','Refund'],['✨','Other']],Lent:[['🤝','Friend'],['👪','Family']],Borrowed:[['🤝','Friend'],['👪','Family']]};
 const ICON={};Object.values(CATS).flat().forEach(c=>ICON[c[1]]=c[0]);
-let tx=[
- {id:1,t:'Income',m:'Salary',a:62000,c:'Salary',d:'1 Oct'},
- {id:2,t:'Expense',m:'Swiggy',a:450,c:'Food',d:'27 Oct'},
- {id:3,t:'Expense',m:'Uber',a:230,c:'Travel',d:'26 Oct'},
- {id:4,t:'Lent',m:'Rohan',a:1500,c:'Friend',d:'24 Oct',who:'Rohan',settled:0},
- {id:5,t:'Expense',m:'Amazon',a:2199,c:'Shopping',d:'22 Oct'},
- {id:6,t:'Borrowed',m:'Neha',a:800,c:'Friend',d:'20 Oct',who:'Neha',settled:0}];
-let pending=[{id:101,m:'Zomato',a:380,d:'28 Oct'}];
+let tx=[];
+let pending=[];
 const memory={swiggy:'Food',uber:'Travel',amazon:'Shopping'};
 const samples=[['Swiggy',450],['Uber',230],['Amazon',1299],['BigBasket',860],['Netflix',649],['Zomato',380]];
 let inc=null,cur={},sid=200,editing=false,adding=null;
@@ -128,7 +130,7 @@ const isOut=t=>t==='Expense'||t==='Lent', cut=t=>t==='Income'||t==='Borrowed';
 function render(){
  persist();runRecur();const t=T(),now=new Date(),mt=t.filter(x=>inM(x,now.getFullYear(),now.getMonth()));const inn=mt.filter(x=>x.t==='Income').reduce((s,x)=>s+x.a,0), out=mt.filter(x=>x.t==='Expense').reduce((s,x)=>s+x.a,0);
  const bal=t.reduce((s,x)=>s+(cut(x.t)?x.a:-x.a),0);
- $('#s-home').innerHTML=`<h1>Hello 👋</h1><div class="sub">${MN[now.getMonth()]} overview</div>${accBar()}
+ $('#s-home').innerHTML=`<div style="display:flex;justify-content:space-between;align-items:center"><h1>Hello 👋</h1><button class="mini" style="width:34px;height:34px;color:var(--tx)" onclick="openData()">⚙️</button></div><div class="sub">${MN[now.getMonth()]} overview</div>${accBar()}
  <div class="hero"><small>Balance</small><div class="big">${fm(bal)}</div><div class="row2">
  <div class="pill"><span class="sub" style="margin:0">In</span><b class="pos">${fm(inn)}</b></div>
  <div class="pill"><span class="sub" style="margin:0">Out</span><b>${fm(out)}</b></div></div></div>
@@ -183,6 +185,26 @@ function runRecur(){const n=new Date(),k=n.getFullYear()*12+n.getMonth();recur.f
 let editA=false;
 function editBox(){return `<div class="card">${accts.map((a,i)=>`<div class="addrow" style="margin:0 0 8px"><span style="align-self:center">${a.i}</span><input value="${a.n}" onchange="renAcc(${i},this.value)"></div>`).join('')}<div class="hint" style="margin:0">Type a new name, then tap outside the box</div></div>`}
 function renAcc(i,v){v=v.trim().replace(/["'<>]/g,'');if(!v||accts.some((a,j)=>j!==i&&a.n===v))return render();const o=accts[i].n;tx.forEach(x=>{if(x.acc===o)x.acc=v});recur.forEach(r=>{if(r.acc===o)r.acc=v});if(view===o)view=v;accts[i].n=v;render()}
+function msg(t){const e=$('#dmsg');if(e)e.textContent=t}
+function openData(){$('#sheet').innerHTML=`<div class="grab"></div><div class="mer">Your data</div><div class="hint" style="margin:10px 0">Saved on this phone. Back up before uninstalling the app.</div><div class="card" onclick="backup()" style="cursor:pointer">📤 Back up<br><span class="sub" style="margin:0">Share or save all your data</span></div><label class="card" style="display:block;cursor:pointer">📥 Restore or import<br><span class="sub" style="margin:0">Pick a backup (.json) or another app's CSV export</span><input type="file" accept=".json,.csv,.txt,text/csv,application/json" style="display:none" onchange="readFile(this.files[0])"></label><textarea class="fld" id="pt" rows="3" placeholder="…or paste backup text here"></textarea><div class="acts"><button class="later" onclick="handleText($('#pt').value)">Restore from text</button></div><div class="card" id="rst" onclick="resetAll()" style="cursor:pointer;margin-top:10px">🗑 Start fresh<br><span class="sub" style="margin:0">Erase all transactions (tap twice)</span></div><div class="hint" id="dmsg" style="margin-top:12px"></div>`;$('#dim').classList.add('on');$('#sheet').classList.add('on')}
+function backup(){const j=JSON.stringify({app:'quickspend',v:1,tx,pending,memory,speed,accts,recur,sid,cats:[CATS.Lent,CATS.Borrowed]}),S=window.Capacitor&&Capacitor.Plugins&&Capacitor.Plugins.Share;
+ if(S){S.share({title:'Quick Spend backup',text:j}).catch(()=>{});msg('Choose where to save it: Drive, WhatsApp, Notes…')}
+ else{try{const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([j],{type:'application/json'}));a.download='quickspend-backup.json';a.click()}catch(e){}try{navigator.clipboard.writeText(j)}catch(e){}msg('Backup downloaded and copied')}}
+function readFile(f){if(!f)return;const r=new FileReader();r.onload=()=>handleText(String(r.result));r.readAsText(f)}
+function handleText(s){let n=0,kind='backup';s=(s||'').replace(/^\uFEFF/,'').trim();if(!s)return msg('Nothing to read');try{if(s[0]==='{'){n=mergeJSON(JSON.parse(s))}else{kind='CSV';n=importCSV(s)}}catch(e){return msg('Could not read that file')}render();msg(n?`Added ${n} transactions from ${kind} ✓`:'Nothing new found in that file')}
+function mergeJSON(d){let n=0;const k=x=>[x.ts,x.a,x.m,x.t].join('|'),have=new Set(tx.map(k));(d.tx||[]).forEach(x=>{if(!have.has(k(x))){tx.push({...x,id:++sid});have.add(k(x));n++}});(d.accts||[]).forEach(a=>{if(!accts.some(b=>b.n===a.n))accts.push(a)});(d.speed||[]).forEach(s=>{if(!speed.includes(s))speed.push(s)});Object.assign(memory,d.memory||{});(d.recur||[]).forEach(r=>{if(!recur.some(q=>q.m===r.m&&q.a===r.a))recur.push(r)});(d.pending||[]).forEach(p=>{if(!pending.some(q=>q.m===p.m&&q.a===p.a&&q.d===p.d))pending.push({...p,id:++sid})});(d.cats||[]).forEach((arr,i)=>{const t=i?'Borrowed':'Lent';arr.forEach(c=>{if(!CATS[t].some(z=>z[1]===c[1]))CATS[t].push(c)})});return n}
+function parseCSV(s){const rows=[];let r=[],c='',q=false;for(let i=0;i<s.length;i++){const ch=s[i];if(q){if(ch==='"'){if(s[i+1]==='"'){c+='"';i++}else q=false}else c+=ch}else if(ch==='"')q=true;else if(ch===','||ch===';'||ch==='\t'){r.push(c);c=''}else if(ch==='\n'||ch==='\r'){if(ch==='\r'&&s[i+1]==='\n')i++;r.push(c);rows.push(r);r=[];c=''}else c+=ch}if(c||r.length){r.push(c);rows.push(r)}return rows.filter(r=>r.some(x=>x.trim()))}
+function pd(s){s=(s||'').trim();let m=s.match(/^(\d{4})[-\/.](\d{1,2})[-\/.](\d{1,2})/);if(m)return new Date(+m[1],m[2]-1,+m[3]).getTime();m=s.match(/^(\d{1,2})[-\/.](\d{1,2})[-\/.](\d{2,4})/);if(m)return new Date(m[3].length===2?2000+ +m[3]:+m[3],m[2]-1,+m[1]).getTime();const t=Date.parse(s);return isNaN(t)?Date.now():t}
+function importCSV(s){const rows=parseCSV(s);if(rows.length<2)return 0;const h=rows[0].map(x=>x.toLowerCase().trim()),f=re=>h.findIndex(x=>re.test(x)),num=v=>parseFloat(String(v||'').replace(/[^0-9.\-]/g,''));
+ const iD=f(/date|time/),iA=f(/amount|amt/),iDr=f(/^(debit|withdraw)/),iCr=f(/^(credit|deposit)/),iT=f(/type|flow|income\/expense/),iC=f(/categor/),iN=f(/note|descr|merchant|payee|title|remark|memo/),iAc=f(/^account/);
+ if(iA<0&&iDr<0&&iCr<0)return 0;const body=rows.slice(1),signed=iA>=0&&body.some(r=>num(r[iA])<0)&&body.some(r=>num(r[iA])>0);
+ const k=x=>[x.ts,x.a,x.m,x.t].join('|'),have=new Set(tx.map(k));let n=0;
+ body.forEach(r=>{let a=iA>=0?num(r[iA]):NaN,t=null;if(iDr>=0&&num(r[iDr])>0){a=num(r[iDr]);t='Expense'}else if(iCr>=0&&num(r[iCr])>0){a=num(r[iCr]);t='Income'}if(!a||isNaN(a))return;
+  if(!t){const ty=iT>=0?(r[iT]||'').toLowerCase():'';t=ty?(/income|credit|received|deposit/.test(ty)?'Income':'Expense'):signed?(a>0?'Income':'Expense'):'Expense'}
+  const cn=(r[iC]||'').trim(),c0=Object.keys(ICON).find(z=>z.toLowerCase()===cn.toLowerCase()),c=c0&&CATS[t].some(z=>z[1]===c0)?c0:'Other',ts=iD>=0?pd(r[iD]):Date.now(),dt=new Date(ts);
+  let ac=iAc>=0?(r[iAc]||'').trim().replace(/["'<>]/g,''):'';if(ac&&!accts.some(b=>b.n===ac))accts.push({n:ac,i:'👤'});
+  const x={id:++sid,t,m:((iN>=0&&r[iN])||cn||'Imported').trim().replace(/[<>]/g,'').slice(0,40),a:Math.abs(a),c,d:dt.getDate()+' '+MN[dt.getMonth()],ts,acc:ac||accts[0].n,settled:0};
+  if(!have.has(k(x))){tx.push(x);have.add(k(x));n++}});return n}
 function accBar(){return `<div class="chips" style="margin-bottom:14px">${['All',...accts.map(a=>a.n)].map((n,i)=>`<div class="chip ${view===n?'on':''}" onclick="view=${i?'accts['+(i-1)+'].n':`'All'`};render()">${i?accts[i-1].i+' ':''}${n}</div>`).join('')}<div class="chip" onclick="addA=!addA;editA=false;render()">+</div><div class="chip" onclick="editA=!editA;addA=false;render()">✏️</div></div>${editA?editBox():''}${addA?`<div class="addrow"><input id="an" placeholder="Account or person, e.g. Mom wallet" onkeydown="if(event.key==='Enter')newAcc()"><button class="btn" onclick="newAcc()">Add</button></div>`:''}`}
 function newAcc(){const v=$('#an').value.trim().replace(/["'<>]/g,'');if(v&&!accts.find(a=>a.n===v)){accts.push({n:v,i:'👤'});view=v}addA=false;render()}
 function recBlock(){return `<div class="sec"><span>Recurring · EMI</span><button class="mini" onclick="openRec()">+</button></div>`+(recur.length?recur.map((r,i)=>`<div class="item"><div class="ic">🔁</div><div class="m"><div>${r.m}</div><span>${r.t==='Income'?'Income':'Expense'} · day ${r.day}${r.left>=0?' · '+r.left+' left':''}</span></div><div class="amt ${r.t==='Income'?'pos':''}">${fm(r.a)}</div><button class="mini" style="color:var(--mu);margin-left:8px" onclick="recur.splice(${i},1);render()">✕</button></div>`).join(''):'<div class="sub" style="margin:0">Rent, EMI, salary… added automatically each month</div>')}
@@ -195,6 +217,14 @@ function insights(){const t=T(),[y,m]=ym,Y=rng==='Year',per=t.filter(x=>inM(x,y,
  else{const by={};per.filter(x=>x.t==='Expense').forEach(x=>by[x.c]=(by[x.c]||0)+x.a);const mx=Math.max(1,...Object.values(by));body=Object.entries(by).sort((a,b)=>b[1]-a[1]).map(([c,v])=>`<div style="margin-bottom:16px"><div style="display:flex;justify-content:space-between;font-size:14px"><span>${ICON[c]||''} ${c}</span><b>${fm(v)}</b></div><div class="bar"><i style="width:${v/mx*100}%"></i></div></div>`).join('')||'<div class="empty">No expenses this month</div>'}
  return `<h1>Insights</h1><div class="seg" style="margin:10px 0 14px">${['Month','Year'].map(r=>`<div class="${rng===r?'on':''}" onclick="rng='${r}';render()">${r}</div>`).join('')}</div><div class="sec" style="margin:0 0 12px"><button class="mini" onclick="stepYm(-1)">‹</button><b style="color:var(--tx);font-size:16px">${Y?y:MN[m]+' '+y}</b><button class="mini" onclick="stepYm(1)">›</button></div><div class="hero"><small>Spent</small><div class="big" style="margin-bottom:12px">${fm(out)}</div><div class="row2"><div class="pill"><span class="sub" style="margin:0">Income</span><b class="pos">${fm(inn)}</b></div><div class="pill"><span class="sub" style="margin:0">Saved</span><b>${fm(inn-out)}</b></div></div></div>`+body}
 load();
+let ob=0,rs=0;
+const OB=[['💸','Welcome to Quick Spend','Track every rupee without the effort. No spreadsheets, no remembering at night.'],['⚡','Quick capture','When your bank sends a payment SMS, a small bubble pops up on your screen. Tap it, pick a category, done in two taps. (In this preview, use the 📩 button to simulate it.)'],['🧩','Everything in one place','Expenses, income, money you lent or borrowed (with a speed dial for friends), several accounts, and recurring payments or EMIs.'],['🔒','Your data stays with you','Everything is saved on this phone. Back up anytime from ⚙️ on Home. You are starting fresh at ₹0.']];
+function seen(){try{return localStorage.getItem('qs_ob')}catch(e){return 1}}
+function showOb(){const [e,t,d]=OB[ob],o=$('#onb');o.classList.add('on');o.innerHTML=`<div class="oskip" onclick="endOb()">${ob<OB.length-1?'Skip':''}</div><div class="oe">${e}</div><h1>${t}</h1><p class="od">${d}</p><div class="odots">${OB.map((_,i)=>`<i class="${i===ob?'on':''}"></i>`).join('')}</div><button class="save obtn" onclick="obNext()">${ob<OB.length-1?'Next':'Get started'}</button>`}
+function obNext(){if(ob<OB.length-1){ob++;showOb()}else endOb()}
+function endOb(){tx=[];pending=[];recur=[];try{localStorage.setItem('qs_ob','1')}catch(e){}$('#onb').classList.remove('on');render()}
+function resetAll(){if(!rs){rs=1;msg('Tap again to erase everything');setTimeout(()=>rs=0,4000);return}rs=0;tx=[];pending=[];recur=[];render();msg('All clear ✓')}
+if(!seen())showOb();
 function later(){if(!cur.manual&&!pending.find(p=>p.id===cur.id))pending.push({id:cur.id,m:cur.m,a:cur.a,d:'Today'});closeSheet();render()}
 render();
 </script></body></html>
