@@ -1,4 +1,4 @@
-name: Build APK
+name: Quick Spend Native APK
 on:
   push:
   workflow_dispatch:
@@ -14,8 +14,9 @@ jobs:
         with:
           distribution: temurin
           java-version: 17
-      - name: Build
+      - name: Build native permissions and SMS bridge
         run: |
+          set -euo pipefail
           mkdir -p www && cp index.html www/
           npm install
           npm install @capacitor/local-notifications@^6.0.0
@@ -275,6 +276,13 @@ jobs:
           grep -q SmsBridgePlugin android/app/src/main/java/com/quickspend/app/MainActivity.java
           echo "MANIFEST CHECK OK"
           npx cap sync android
+          python3 - <<'PY_CHECK'
+          from pathlib import Path
+          source = Path('android/app/src/main/java/com/quickspend/app')
+          assert (source / 'SmsBridgePlugin.java').is_file(), 'SmsBridgePlugin source is missing'
+          assert (source / 'SmsReceiver.java').is_file(), 'SmsReceiver source is missing'
+          assert 'registerPlugin(SmsBridgePlugin.class)' in (source / 'MainActivity.java').read_text(), 'Activity plugin registration is missing'
+          PY_CHECK
           cd android && chmod +x gradlew && ./gradlew assembleDebug
           APK=app/build/outputs/apk/debug/app-debug.apk
           AAPT=$(ls -d $ANDROID_HOME/build-tools/*/aapt 2>/dev/null | tail -1)
@@ -282,13 +290,36 @@ jobs:
           "$AAPT" dump permissions "$APK" > apk-permissions.txt
           cat apk-permissions.txt
           grep -q android.permission.POST_NOTIFICATIONS apk-permissions.txt
+          grep -q android.permission.RECEIVE_SMS apk-permissions.txt
           "$AAPT" dump badging "$APK" > apk-badging.txt
           TARGET=$(sed -n "s/^targetSdkVersion:'\([0-9]*\)'/\1/p" apk-badging.txt)
           if [ -z "$TARGET" ] || [ "$TARGET" -lt 33 ]; then
             echo "Quick Spend requires targetSdkVersion >= 33. Update android/variables.gradle."
             exit 1
           fi
+          python3 - <<'PY_APK'
+          from zipfile import ZipFile
+          from pathlib import Path
+          import json, os
+          apk = Path('app/build/outputs/apk/debug/app-debug.apk')
+          with ZipFile(apk) as archive:
+              dex = [archive.read(n) for n in archive.namelist() if n.endswith('.dex')]
+              for cls in (b'Lcom/quickspend/app/SmsBridgePlugin;', b'Lcom/quickspend/app/SmsReceiver;'):
+                  assert any(cls in data for data in dex), 'APK is missing native class: ' + cls.decode()
+              html = archive.read('assets/public/index.html').decode()
+              assert 'nativePromise' in html, 'APK contains an outdated HTML bridge'
+          print('APK VERIFIED: native SMS bridge and receiver packaged; SMS and notification permissions verified above.')
+          Path('app/build/outputs/apk/debug/build-evidence.json').write_text(json.dumps({
+              'workflow': 'Quick Spend Native APK',
+              'commit': os.environ.get('GITHUB_SHA'),
+              'run_id': os.environ.get('GITHUB_RUN_ID'),
+              'native_checks': 'passed'
+          }, indent=2))
+          PY_APK
       - uses: actions/upload-artifact@v4
         with:
-          name: quickspend-apk-${{ github.run_number }}
-          path: android/app/build/outputs/apk/debug/app-debug.apk
+          name: quickspend-native-verified-${{ github.run_number }}
+          path: |
+            android/app/build/outputs/apk/debug/app-debug.apk
+            android/app/build/outputs/apk/debug/build-evidence.json
+          if-no-files-found: error
