@@ -19,7 +19,7 @@ jobs:
           mkdir -p www && cp index.html www/
           npm install
           npm install @capacitor/local-notifications@^6.0.0
-          npx cap add android
+          if [ ! -d android ]; then npx cap add android; fi
           D=android/app/src/main/java/com/quickspend/app
           mkdir -p $D
           cat > $D/SmsReceiver.java <<'EOF'
@@ -115,7 +115,13 @@ jobs:
           package com.quickspend.app;
 
           import android.content.SharedPreferences;
+          import android.content.Intent;
+          import android.net.Uri;
+          import android.provider.Settings;
           import android.os.Build;
+          import android.app.NotificationManager;
+          import android.app.NotificationChannel;
+          import androidx.core.app.NotificationManagerCompat;
           import com.getcapacitor.JSArray;
           import com.getcapacitor.JSObject;
           import com.getcapacitor.PermissionState;
@@ -138,13 +144,20 @@ jobs:
             public void status(PluginCall call) {
               JSObject r = new JSObject();
               r.put("sms", getPermissionState("sms") == PermissionState.GRANTED);
-              r.put("notif", Build.VERSION.SDK_INT < 33 || getPermissionState("notif") == PermissionState.GRANTED);
+              boolean allowed = NotificationManagerCompat.from(getContext()).areNotificationsEnabled();
+              NotificationManager nm = (NotificationManager) getContext().getSystemService(android.content.Context.NOTIFICATION_SERVICE);
+              if (Build.VERSION.SDK_INT >= 26) {
+                NotificationChannel channel = nm.getNotificationChannel(SmsReceiver.CH);
+                allowed = allowed && (channel == null || channel.getImportance() != NotificationManager.IMPORTANCE_NONE);
+              }
+              r.put("notif", allowed && (Build.VERSION.SDK_INT < 33 || getPermissionState("notif") == PermissionState.GRANTED));
               call.resolve(r);
             }
 
             @PluginMethod
             public void request(PluginCall call) {
-              requestAllPermissions(call, "done");
+              if (Build.VERSION.SDK_INT >= 33) requestAllPermissions(call, "done");
+              else requestPermissionForAlias("sms", call, "done");
             }
 
             @PluginMethod
@@ -154,7 +167,36 @@ jobs:
 
             @PluginMethod
             public void requestNotif(PluginCall call) {
-              requestPermissionForAlias("notif", call, "done");
+              if (Build.VERSION.SDK_INT >= 33) requestPermissionForAlias("notif", call, "done");
+              else status(call);
+            }
+
+            @PluginMethod
+            public void openNotificationSettings(PluginCall call) {
+              Intent intent;
+              if (Build.VERSION.SDK_INT >= 26) {
+                intent = new Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS);
+                intent.putExtra(Settings.EXTRA_APP_PACKAGE, getContext().getPackageName());
+              } else {
+                intent = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                    Uri.parse("package:" + getContext().getPackageName()));
+              }
+              try {
+                getActivity().startActivity(intent);
+                call.resolve();
+              } catch (Exception e) { call.reject("Could not open notification settings", e); }
+            }
+
+            @PluginMethod
+            public void testNotification(PluginCall call) {
+              if (!NotificationManagerCompat.from(getContext()).areNotificationsEnabled()) {
+                call.reject("Notifications are disabled. Enable them in notification settings.");
+                return;
+              }
+              try {
+                SmsReceiver.alert(getContext(), "Test notification");
+                call.resolve();
+              } catch (Exception e) { call.reject("Could not post test notification", e); }
             }
 
             @PermissionCallback
@@ -189,6 +231,10 @@ jobs:
             public void onCreate(Bundle savedInstanceState) {
               registerPlugin(SmsBridgePlugin.class);
               super.onCreate(savedInstanceState);
+              if (android.os.Build.VERSION.SDK_INT >= 26) {
+                android.app.NotificationManager nm = (android.app.NotificationManager) getSystemService(NOTIFICATION_SERVICE);
+                nm.createNotificationChannel(new android.app.NotificationChannel(SmsReceiver.CH, "Payments", android.app.NotificationManager.IMPORTANCE_HIGH));
+              }
               grab(getIntent());
             }
 
@@ -214,10 +260,17 @@ jobs:
           perms = '<uses-permission android:name="android.permission.RECEIVE_SMS"/>\n<uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>\n'
           rec = '<receiver android:name=".SmsReceiver" android:exported="true" android:permission="android.permission.BROADCAST_SMS"><intent-filter android:priority="999"><action android:name="android.provider.Telephony.SMS_RECEIVED"/></intent-filter></receiver>\n'
           share = '<intent-filter><action android:name="android.intent.action.SEND"/><category android:name="android.intent.category.DEFAULT"/><data android:mimeType="text/plain"/></intent-filter>\n'
+          for permission in ('RECEIVE_SMS', 'POST_NOTIFICATIONS'):
+              full = 'android.permission.' + permission
+              if full not in s:
+                  s = s.replace('<application', '<uses-permission android:name="' + full + '"/>\n<application', 1)
           if 'SmsReceiver' not in s:
-              s = s.replace('<application', perms + '<application', 1).replace('</activity>', share + '</activity>', 1).replace('</application>', rec + '</application>', 1)
+              s = s.replace('</application>', rec + '</application>', 1)
+          if 'android.intent.action.SEND' not in s:
+              s = s.replace('</activity>', share + '</activity>', 1)
           open(p, 'w').write(s)
           PY
+          grep -q POST_NOTIFICATIONS android/app/src/main/AndroidManifest.xml
           grep -q RECEIVE_SMS android/app/src/main/AndroidManifest.xml
           grep -q SmsBridgePlugin android/app/src/main/java/com/quickspend/app/MainActivity.java
           echo "MANIFEST CHECK OK"
@@ -225,7 +278,16 @@ jobs:
           cd android && chmod +x gradlew && ./gradlew assembleDebug
           APK=app/build/outputs/apk/debug/app-debug.apk
           AAPT=$(ls -d $ANDROID_HOME/build-tools/*/aapt 2>/dev/null | tail -1)
-          if [ -n "$AAPT" ]; then $AAPT dump permissions $APK || true; fi
+          test -n "$AAPT"
+          "$AAPT" dump permissions "$APK" > apk-permissions.txt
+          cat apk-permissions.txt
+          grep -q android.permission.POST_NOTIFICATIONS apk-permissions.txt
+          "$AAPT" dump badging "$APK" > apk-badging.txt
+          TARGET=$(sed -n "s/^targetSdkVersion:'\([0-9]*\)'/\1/p" apk-badging.txt)
+          if [ -z "$TARGET" ] || [ "$TARGET" -lt 33 ]; then
+            echo "Quick Spend requires targetSdkVersion >= 33. Update android/variables.gradle."
+            exit 1
+          fi
       - uses: actions/upload-artifact@v4
         with:
           name: quickspend-apk-${{ github.run_number }}
