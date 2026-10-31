@@ -127,7 +127,9 @@ h1{font-size:30px;font-weight:700;letter-spacing:-.5px;margin-bottom:4px}
 document.documentElement.classList.toggle('native-app',!!SB());
 const CATS={Expense:[['🍔','Food'],['🚕','Travel'],['🛍️','Shopping'],['🧾','Bills'],['🎬','Fun'],['💊','Health'],['✨','Other']],
 Income:[['💼','Salary'],['🎁','Gift'],['↩️','Refund'],['✨','Other']],Lent:[['🤝','Friend'],['👪','Family']],Borrowed:[['🤝','Friend'],['👪','Family']]};
+Object.values(CATS).forEach(categories=>categories.unshift(['◌','Uncategorised']));
 const ICON={};Object.values(CATS).flat().forEach(c=>ICON[c[1]]=c[0]);
+let reviewSyncError='',reviewSyncAt=0;
 let tx=[];
 let pending=[];
 const memory={swiggy:'Food',uber:'Travel',amazon:'Shopping'};
@@ -148,15 +150,17 @@ function render(){
  <div class="pill"><span class="sub" style="margin:0">In</span><b class="pos">${fm(inn)}</b></div>
  <div class="pill"><span class="sub" style="margin:0">Out</span><b>${fm(out)}</b></div></div></div>
  ${recBlock()}<div class="sec"><span>Recent</span></div>`+t.slice().reverse().map(x=>item(x)).join('');
- $('#s-review').innerHTML=`<h1>To review</h1><div class="sub">Payments waiting for a category</div><div class="chips"><div class="chip" onclick="openPaste()">📋 Paste a bank SMS</div></div><div class="hero" style="padding:16px"><small>This month</small><div class="row2" style="margin-top:10px"><div class="pill"><span class="sub" style="margin:0">Income</span><b class="pos">${fm(inn)}</b></div><div class="pill"><span class="sub" style="margin:0">Expenses</span><b>${fm(out)}</b></div></div></div>`+(pending.length?pending.map(p=>`<div class="item" onclick="openSheet(pending.find(z=>z.id==${p.id}))" style="cursor:pointer"><div class="ic">💳</div><div class="m"><div>${p.m}</div><span>${p.d}${p.kind==='Income'?' · credited':''} · tap to sort</span></div><div class="amt">${fm(p.a)}</div><button class="mini" style="color:var(--mu);margin-left:8px" onclick="event.stopPropagation();dismiss(${p.id})">✕</button></div>`).join(''):'<div class="empty">All caught up ✓</div>');
- const bd=$('#bd');bd.style.display=pending.length?'block':'none';bd.textContent=pending.length;
+ $('#s-review').innerHTML=`<h1>To review</h1><div class="sub">Payments waiting for a category</div><div class="hint" id="review-sync" role="status"></div><button class="btn" style="margin:8px 0 14px" onclick="pull(true)">Refresh payments ↻</button><div class="chips"><div class="chip" onclick="openPaste()">📋 Paste a bank SMS</div></div><div class="hero" style="padding:16px"><small>This month</small><div class="row2" style="margin-top:10px"><div class="pill"><span class="sub" style="margin:0">Income</span><b class="pos">${fm(inn)}</b></div><div class="pill"><span class="sub" style="margin:0">Expenses</span><b>${fm(out)}</b></div></div></div>`+(pending.length?pending.map(p=>`<div class="item" onclick="openSheet(pending.find(z=>z.id==${p.id}))" style="cursor:pointer"><div class="ic">💳</div><div class="m"><div>${p.m}</div><span>${p.d}${p.kind==='Income'?' · credited':''} · tap to sort</span></div><div class="amt">${fm(p.a)}</div><button class="mini" style="color:var(--mu);margin-left:8px" onclick="event.stopPropagation();dismiss(${p.id})">✕</button></div>`).join(''):'<div class="empty">No new payments waiting</div>');
+ const untagged=tx.filter(x=>x.c==='Uncategorised');
+ if(untagged.length)$('#s-review').innerHTML+=`<div class="sec"><span>Saved · needs a category</span></div>`+untagged.map(x=>`<div class="item" style="cursor:pointer" onclick="openSavedReview(${x.id})"><div class="ic">◌</div><div class="m"><div>${x.m}</div><span>${x.d} · saved safely · tap to categorise</span></div><div class="amt">${fm(x.a)}</div></div>`).join('');
+ const bd=$('#bd'),count=pending.length+untagged.length;bd.style.display=count?'block':'none';bd.textContent=count;
  // friends
  const ppl={};tx.filter(x=>x.who).forEach(x=>{ppl[x.who]=(ppl[x.who]||0)+(x.t==='Lent'?1:-1)*(x.a-(x.settled||0))});
  const names=Object.keys(ppl),owed=names.reduce((s,n)=>s+Math.max(ppl[n],0),0),owe=names.reduce((s,n)=>s+Math.max(-ppl[n],0),0);
  $('#s-friends').innerHTML=`<h1>Friends</h1><div class="sub">Who owes whom</div><div class="row2" style="margin-bottom:16px"><div class="pill" style="background:var(--card)"><span class="sub" style="margin:0">You get</span><b class="pos">${fm(owed)}</b></div><div class="pill" style="background:var(--card)"><span class="sub" style="margin:0">You owe</span><b style="color:var(--or)">${fm(owe)}</b></div></div>`+
  (names.filter(n=>ppl[n]!==0).map(n=>`<div class="card"><div class="top"><div><div style="font-weight:600">${n}</div><span class="sub" style="margin:0">${ppl[n]>0?'owes you':'you owe'}</span></div><div style="text-align:right"><div class="amt ${ppl[n]>0?'pos':''}" style="${ppl[n]<0?'color:var(--or)':''}">${fm(Math.abs(ppl[n]))}</div><button class="btn" style="margin-top:6px" onclick="settle('${n}')">Mark settled</button></div></div></div>`).join('')||'<div class="empty">No pending balances</div>');
  // insights
- $('#s-insights').innerHTML=insights();return;
+ $('#s-insights').innerHTML=insights();paintReviewStatus();return;
  $('#s-insights').innerHTML=`<h1>Insights</h1><div class="sub">Where your money went</div><div class="hero"><small>Spent this month</small><div class="big" style="margin-bottom:0">${fm(out)}</div></div>`+
  Object.entries(by).sort((a,b)=>b[1]-a[1]).map(([c,v])=>`<div style="margin-bottom:16px"><div style="display:flex;justify-content:space-between;font-size:14px"><span>${ICON[c]||''} ${c}</span><b>${fm(v)}</b></div><div class="bar"><i style="width:${v/mx*100}%"></i></div></div>`).join('');
 }
@@ -170,20 +174,22 @@ function sms(){const s=samples[Math.floor(Math.random()*samples.length)];inc={id
  $('#sms').innerHTML=`<b>HDFC Bank · now</b>Rs ${inc.a} debited from A/c XX4821 at ${inc.m.toUpperCase()}. Avl bal Rs 41,230.`;
  $('#sms').classList.add('show');setTimeout(()=>{$('#sms').classList.remove('show');$('#bub').classList.add('show')},2200)}
 
-function openSheet(p){cur={...p,acc:p.acc||(view==='All'?accts[0].n:view),type:p.kind||'Expense',cat:(p.kind||'Expense')==='Expense'?(memory[(p.m||'').toLowerCase()]||null):null,who:''};editing=!!p.manual;adding=null;paint();$('#dim').classList.add('on');$('#sheet').classList.add('on');$('#bub').classList.remove('show')}
+function openSheet(p){cur={...p,acc:p.acc||(view==='All'?accts[0].n:view),type:p.kind||'Expense',cat:p.c||((p.kind||'Expense')==='Expense'?(memory[(p.m||'').toLowerCase()]||'Uncategorised'):'Uncategorised'),who:p.who||''};editing=!!p.manual;adding=null;paint();$('#dim').classList.add('on');$('#sheet').classList.add('on');$('#bub').classList.remove('show')}
+function openSavedReview(id){const entry=tx.find(x=>x.id===id);if(entry)openSheet({...entry,kind:entry.t,reviewTxId:id,sourceKey:null})}
 function closeSheet(){$('#dim').classList.remove('on');$('#sheet').classList.remove('on')}
 function paint(){
  const need=cur.type==='Lent'||cur.type==='Borrowed';
  $('#sheet').innerHTML=`<div class="grab"></div><div class="mer">${cur.manual?'New entry':'Paid to '+cur.m}</div>
  <div class="amtbox">${editing?`<input id="ai" type="number" inputmode="decimal" placeholder="0" value="${cur.a}" oninput="cur.a=this.value">`:`<span>${fm(cur.a)}</span>`}<button class="pen" onclick="editing=!editing;paint()">${editing?'✓':'✏️'}</button></div>
- <div class="seg">${['Expense','Income','Lent','Borrowed'].map(t=>`<div class="${cur.type===t?'on':''}" onclick="cur.type='${t}';cur.cat=null;paint()">${t}</div>`).join('')}</div>
+ <div class="seg">${['Expense','Income','Lent','Borrowed'].map(t=>`<div class="${cur.type===t?'on':''}" onclick="cur.type='${t}';cur.cat='Uncategorised';paint()">${t}</div>`).join('')}</div>
  ${accts.length>1?`<div class="chips" style="margin-bottom:10px">${accts.map((a,i)=>`<div class="chip ${cur.acc===a.n?'on':''}" onclick="cur.acc=accts[${i}].n;paint()">${a.i} ${a.n}</div>`).join('')}</div>`:''}${need?`<div class="hd"><span>Friends & family</span><button class="mini" onclick="toggleAdd('cat')">+</button></div>`:''}${need&&adding==='cat'?addbox():''}<div class="chips">${CATS[cur.type].map(c=>`<div class="chip ${cur.cat===c[1]?'on':''}" onclick="cur.cat='${c[1]}';paint()">${c[0]} ${c[1]}</div>`).join('')}</div>
  ${need?`<div class="hd"><span>⚡ Speed dial</span><button class="mini" onclick="toggleAdd('dial')">+</button></div>${adding==='dial'?addbox():''}<div class="dial">${speed.map((n,i)=>`<div class="dl ${cur.who===n?'on':''}" onclick="cur.who='${n}';paint()"><div class="av" style="background:${AVC[i%AVC.length]}">${n[0].toUpperCase()}</div>${n}</div>`).join('')}</div>`:''}
  ${cur.type==='Expense'?`<div class="hd"><span>🔁 EMI</span><div class="chip ${cur.emi?'on':''}" style="padding:5px 12px;font-size:12px" onclick="cur.emi=cur.emi?0:12;paint()">${cur.emi?'On':'Off'}</div></div>${cur.emi?`<input class="fld" type="number" min="2" placeholder="Number of months" value="${cur.emi}" oninput="cur.emi=this.value"><div class="hint">This amount is the monthly instalment. It repeats automatically.</div>`:''}`:''}${cur.cat&&cur.type==='Expense'&&memory[(cur.m||'').toLowerCase()]===cur.cat?'<div class="hint">✨ Remembered from last time</div>':''}
  <div class="acts"><button class="later" onclick="later()">Later</button><button class="save" onclick="save()">Save</button></div>`}
 function save(){if(cur.sourceKey&&tx.some(x=>x.sourceKey===cur.sourceKey)){pending=pending.filter(p=>p.sourceKey!==cur.sourceKey);closeSheet();render();const P=SB();if(P&&persist())P.completeSms({sourceKey:cur.sourceKey}).catch(()=>{});return}const a=Number(cur.a);if(!Number.isFinite(a)||a<=0){editing=true;paint();return}
+ if(cur.reviewTxId){const entry=tx.find(x=>x.id===cur.reviewTxId);if(!entry)return;const before={...entry};Object.assign(entry,{a,t:cur.type,c:cur.cat||'Uncategorised',acc:cur.acc,who:['Lent','Borrowed'].includes(cur.type)?cur.who||entry.who||'Friend':null});if(!persist()){Object.assign(entry,before);alert('Could not save. Try again.');return}closeSheet();render();return}
  const snapshot={tx:tx.slice(),pending:pending.slice(),recur:recur.slice(),memory:{...memory},sid};
- const cat=cur.cat||(CATS[cur.type][0][1]);const who=(cur.type==='Lent'||cur.type==='Borrowed')?(cur.who||'Friend'):null;
+ const cat=cur.cat||'Uncategorised';const who=(cur.type==='Lent'||cur.type==='Borrowed')?(cur.who||'Friend'):null;
  tx.push({id:++sid,t:cur.type,m:who||cur.m,a,c:cat,d:cur.ts?fd(cur.ts):'Today',who,settled:0,ts:cur.ts||Date.now(),acc:cur.acc,sourceKey:cur.sourceKey||null});
  if(cur.type==='Expense'&&cur.m&&!cur.manual)memory[cur.m.toLowerCase()]=cat;
  const em=Math.floor(Number(cur.emi));if(cur.type==='Expense'&&em>1){const n=new Date();recur.push({t:'Expense',m:(cur.manual?cat:cur.m)+' EMI',a,c:cat,day:Math.min(n.getDate(),28),left:em-1,acc:cur.acc,last:n.getFullYear()*12+n.getMonth()})}
@@ -193,7 +199,7 @@ let accts=[{n:'Main account',i:'🏦'},{n:'Cash',i:'👛'}],view='All',rng='Mont
 const T=()=>tx.filter(x=>view==='All'||(x.acc||accts[0].n)===view);
 const inM=(x,y,m)=>{const d=new Date(x.ts);return d.getFullYear()===y&&(m<0||d.getMonth()===m)};
 function persist(){try{localStorage.setItem('qs1',JSON.stringify({tx,pending,memory,speed,accts,recur,sid,smsSeen,cats:[CATS.Lent,CATS.Borrowed]}));return true}catch(e){return false}}
-function load(){try{const d=JSON.parse(localStorage.getItem('qs1'));if(d){tx=d.tx;pending=d.pending;Object.assign(memory,d.memory);speed.splice(0,speed.length,...d.speed);accts=d.accts;recur=d.recur;sid=d.sid;smsSeen=d.smsSeen||[];CATS.Lent=d.cats[0];CATS.Borrowed=d.cats[1]}}catch(e){}
+function load(){try{const d=JSON.parse(localStorage.getItem('qs1'));if(d){tx=d.tx;pending=d.pending;Object.assign(memory,d.memory);speed.splice(0,speed.length,...d.speed);accts=d.accts;recur=d.recur;sid=d.sid;smsSeen=d.smsSeen||[];if(d.cats){CATS.Lent=d.cats[0]||CATS.Lent;CATS.Borrowed=d.cats[1]||CATS.Borrowed}for(const cats of Object.values(CATS))if(!cats.some(c=>c[1]==='Uncategorised'))cats.unshift(['◌','Uncategorised'])}}catch(e){}
  const n=new Date();tx.forEach(x=>{if(!x.ts){const dd=Math.min(parseInt(x.d)||n.getDate(),28);x.ts=new Date(n.getFullYear(),n.getMonth(),x.d==='Today'?n.getDate():dd).getTime()}if(!x.acc)x.acc=accts[0].n})}
 function runRecur(){const n=new Date(),k=n.getFullYear()*12+n.getMonth();recur.forEach(r=>{if(r.left===0||r.last===k||n.getDate()<r.day)return;r.last=k;if(r.left>0)r.left--;tx.push({id:++sid,t:r.t,m:r.m,a:r.a,c:r.c||(r.t==='Income'?'Salary':'Bills'),d:'Today',ts:n.getTime(),acc:r.acc})})}
 let editA=false;
@@ -237,7 +243,7 @@ const OB=[['💸','Welcome to Quick Spend','Track every rupee without the effort
 function seen(){try{return localStorage.getItem('qs_ob')}catch(e){return 1}}
 function showOb(){const [e,t,d,act]=OB[ob],o=$('#onb');o.classList.add('on');o.setAttribute('role','dialog');o.setAttribute('aria-modal','true');o.setAttribute('aria-labelledby','onb-title');o.innerHTML=`<div class="onb-header">${ob<OB.length-1?'<button class="oskip" onclick="endOb()">Skip</button>':''}</div><div class="onb-panel"><div class="oe" aria-hidden="true">${e}</div><h1 id="onb-title">${t}</h1><p class="od">${d}</p><div class="odots" aria-label="Step ${ob+1} of ${OB.length}">${OB.map((_,i)=>`<i class="${i===ob?'on':''}"></i>`).join('')}</div></div><div class="onb-actions" id="onb-actions"><button class="save obtn" onclick="${act?`permStep('${act}')`:'obNext()'}">${act?'Allow':ob<OB.length-1?'Next':'Get started'}</button>${act?'<button class="oskip" onclick="obNext()">Not now</button>':''}</div>`;if(act==='overlay')finishFloatingSetup()}
 function obNext(){if(ob<OB.length-1){ob++;showOb()}else endOb()}
-function endOb(){if(!seen()){tx=[];pending=[];recur=[]}try{localStorage.setItem('qs_ob','1');localStorage.setItem('qs_p2','1');if(SB())localStorage.setItem('qs_overlay_prompted','1')}catch(e){}$('#onb').classList.remove('on');render()}
+function endOb(){try{localStorage.setItem('qs_ob','1');localStorage.setItem('qs_p2','1');if(SB())localStorage.setItem('qs_overlay_prompted','1')}catch(e){}$('#onb').classList.remove('on');render()}
 function p2(){try{return localStorage.getItem('qs_p2')}catch(e){return 1}}
 async function resetAll(){if(!rs){rs=1;msg('Tap again to erase everything');setTimeout(()=>rs=0,4000);return}rs=0;try{const P=SB();if(P)await P.clearNativeInbox();tx=[];pending=[];recur=[];smsSeen=[];render();msg('All clear ✓')}catch(e){msg('Could not clear native payments. Try again.')}}
 if(!seen())showOb();else if(!p2()&&SB()){ob=4;showOb()}
@@ -251,7 +257,7 @@ function SB(n='SmsBridge'){
  // object can be present while lacking methods added in a later app release.
  const existing=cap.Plugins&&cap.Plugins[n];
  if(n!=='SmsBridge'&&existing)return existing;
- const methods=n==='SmsBridge'?['status','request','requestSms','requestNotif','drain','openNotificationSettings','testNotification','overlayStatus','openOverlaySettings','setOverlayEnabled','testOverlay','acknowledgeSaved','completeSms','clearNativeInbox']:n==='Share'?['share']:[];
+ const methods=n==='SmsBridge'?['status','request','requestSms','requestNotif','drain','inboxSnapshot','openNotificationSettings','testNotification','overlayStatus','openOverlaySettings','setOverlayEnabled','testOverlay','acknowledgeSaved','completeSms','clearNativeInbox']:n==='Share'?['share']:[];
  const plugin={};
  for(const method of methods)plugin[method]=(options={})=>{
   if(typeof cap.nativePromise==='function')return cap.nativePromise(n,method,options);
@@ -288,9 +294,14 @@ async function fixPerms(){msg('Asking…');const a=await reqPerm('notif'),b=awai
 async function notificationSettings(){const P=SB();if(!P){msg('Open notification settings in the installed app');return}try{await P.openNotificationSettings()}catch(e){msg('Could not open settings: '+(e&&e.message||e))}}
 async function testNotification(){const P=SB();if(!P){msg('Test notifications in the installed app');return}try{const s=await P.status();if(!s.notif){msg('Enable notifications and the Payments category in notification settings');return}await P.testNotification();msg('Test sent — check your notification shade')}catch(e){msg('Test failed: '+(e&&e.message||e))}}
 let pullingNative=false;
+function paintReviewStatus(){const el=$('#review-sync');if(el)el.textContent=reviewSyncError?'Could not sync payments: '+reviewSyncError:SB()?(reviewSyncAt?'Payments synced · '+pending.length+' waiting':'Checking payment inbox…'):'Payments are saved in this browser';}
 const cleanNativeText=value=>String(value||'').replace(/[<>"']/g,'').trim().slice(0,60);
 async function pull(fg){const P=SB();if(!P||pullingNative)return;pullingNative=true;try{
- const r=await P.drain(),ack=[],completed=[];let last=null,n=0,changed=false;
+ let response;
+ try{response=await P.inboxSnapshot()}catch(e){response=await P.drain()}
+ const r=typeof response.payload==='string'?JSON.parse(response.payload):response,ack=[],completed=[];
+ for(const field of ['items','entries']){if(typeof r[field]==='string')r[field]=JSON.parse(r[field]);if(!Array.isArray(r[field]))throw new Error('Payment inbox returned invalid '+field+'. Update QuickSpend and retry.');}
+ let last=null,n=0,changed=false;
  for(const entry of r.entries||[]){
   const key=String(entry.nativeKey||entry.sourceKey||'');if(!key)continue;
   if(!tx.some(x=>x.nativeKey===key||x.sourceKey===key)){
@@ -323,9 +334,10 @@ async function pull(fg){const P=SB();if(!P||pullingNative)return;pullingNative=t
  if(!persist())throw new Error('Payments remain safely in the native inbox because app storage could not be written.');
  if(ack.length)await P.acknowledgeSaved({keys:ack});
  for(const sourceKey of completed)await P.completeSms({sourceKey});
+ reviewSyncError='';reviewSyncAt=Date.now();paintReviewStatus();
  if(n){if(fg){inc=last;$('#bub').classList.add('show')}else if(!$('#onb').classList.contains('on'))openSheet(last)}
-}catch(e){console.warn('QuickSpend native inbox:',e&&e.message||e)}finally{pullingNative=false}}
-async function showNativeBuild(){const el=$('#native-build');if(!el)return;const P=SB();if(!P){el.textContent='Web version · floating-capture-5';return}try{const s=await P.status();el.textContent=s.nativeBuild?'Android build '+s.nativeBuild+' · '+(s.bridgeRevision||'unknown bridge'):'Older native build · update through your Google Play tester link'}catch(e){el.textContent='Could not read native build: '+(e.message||e)}}
+}catch(e){reviewSyncError=e&&e.message||String(e);paintReviewStatus();console.warn('QuickSpend native inbox:',reviewSyncError)}finally{pullingNative=false}}
+async function showNativeBuild(){const el=$('#native-build');if(!el)return;const P=SB();if(!P){el.textContent='Web version · floating-capture-6';return}try{const s=await P.status();el.textContent=s.nativeBuild?'Android build '+s.nativeBuild+' · '+(s.bridgeRevision||'unknown bridge'):'Older native build · update through your Google Play tester link'}catch(e){el.textContent='Could not read native build: '+(e.message||e)}}
 function openFloatingSettings(){$('#sheet').innerHTML=`<div class="grab"></div><div class="mer">Floating quick capture</div><p class="sub" style="margin:14px 0">A movable shortcut appears after a bank payment. Tap it to edit the amount, choose a category, and save over your current app.</p><p class="hint">Android needs Display over other apps permission. Quick capture starts automatically after permission is granted. You can turn it off here. An ongoing notification stays visible while it is on. No screen contents are read.</p><div class="hint" id="float-status" role="status">Checking…</div><button class="btn" style="width:100%;min-height:46px;margin:8px 0" onclick="enableFloating()">Allow floating shortcut</button><button class="btn" style="width:100%;min-height:46px;margin-bottom:8px" onclick="testFloating()">Test floating shortcut</button><button class="btn" style="width:100%;min-height:46px;margin-bottom:8px" onclick="pauseFloating()">Turn off floating shortcut</button><button class="btn" style="width:100%;min-height:44px" onclick="closeSheet()">Done</button>`;$('#dim').classList.add('on');$('#sheet').classList.add('on');refreshFloatingStatus()}
 async function refreshFloatingStatus(){const el=$('#float-status');if(!el)return;const P=SB();if(!P){el.textContent='System-wide floating shortcuts are available in Android. Use Test quick capture at the top of this web page to preview the flow.';return}try{const s=await P.overlayStatus();el.textContent=s.error||(s.enabled?(s.allowed?(s.running?'On · go to another app to see pending payments':'Starting · reopen QuickSpend if capture does not start'):'Display over other apps permission is off'):'Off · tap Allow floating shortcut to turn it back on')}catch(e){el.textContent='Could not check floating capture: '+(e.message||e)}}
 async function enableFloating(){const P=SB(),el=$('#float-status');if(!P)return refreshFloatingStatus();try{const s=await P.overlayStatus();if(!s.allowed){localStorage.setItem('qs_overlay_waiting','1');localStorage.setItem('qs_overlay_prompted','1');await P.openOverlaySettings();if(el)el.textContent='Allow display over other apps for QuickSpend, then return. Quick capture starts automatically.';return}await P.setOverlayEnabled({enabled:true});await refreshFloatingStatus()}catch(e){if(el)el.textContent=e.message||String(e)}}
@@ -363,6 +375,7 @@ async function setupFloatingOnLaunch(){
 setInterval(()=>{if(!document.hidden)pull(true)},4000);
 document.addEventListener('visibilitychange',()=>{if(!document.hidden){pull(false);finishFloatingSetup()}});
 window.addEventListener('focus',()=>{pull(true);finishFloatingSetup()});
+window.addEventListener('quickspendResume',()=>{pull(true);finishFloatingSetup()});
 pull(false);
 setupFloatingOnLaunch();
 function later(){if(!cur.manual&&!pending.find(p=>p.id===cur.id))pending.push({id:cur.id,m:cur.m,a:cur.a,d:'Today'});closeSheet();render()}
