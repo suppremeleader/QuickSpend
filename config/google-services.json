@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "920088406283",
+    "project_id": "quickspend-a6259",
+    "storage_bucket": "quickspend-a6259.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:920088406283:android:d1be9a38a4193b47c41a0e",
+        "android_client_info": {
+          "package_name": "com.quickspend.app"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "920088406283-mohef1vopuuih93h6i4ubiuivbcqausd.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.quickspend.app",
+            "certificate_hash": "7f445199b7f7be62d93961a58c89d99088a78235"
+          }
+        },
+        {
+          "client_id": "920088406283-rhvn5n8pnun5qnhootcmqcifh0dvem96.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyC_8aL1EQ3jKhFxKoAm3KaDx6OZwjzTgcg"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "920088406283-rhvn5n8pnun5qnhootcmqcifh0dvem96.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
