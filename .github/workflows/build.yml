@@ -166,6 +166,13 @@ jobs:
             public void status(PluginCall call) {
               JSObject r = new JSObject();
               r.put("sms", getPermissionState("sms") == PermissionState.GRANTED);
+              r.put("bridgeRevision", "floating-capture-4");
+              try {
+                android.content.pm.PackageInfo info = getContext().getPackageManager().getPackageInfo(getContext().getPackageName(), 0);
+                r.put("nativeBuild", Build.VERSION.SDK_INT >= 28 ? info.getLongVersionCode() : info.versionCode);
+              } catch (android.content.pm.PackageManager.NameNotFoundException e) {
+                r.put("nativeBuild", -1);
+              }
               boolean allowed = NotificationManagerCompat.from(getContext()).areNotificationsEnabled();
               NotificationManager nm = (NotificationManager) getContext().getSystemService(android.content.Context.NOTIFICATION_SERVICE);
               if (Build.VERSION.SDK_INT >= 26) {
@@ -960,7 +967,7 @@ jobs:
           raw = os.environ.get('INPUT_VERSION_CODE', '').strip()
           code = int(raw) if raw else 1000 + int(os.environ['GITHUB_RUN_NUMBER'])
           assert 0 < code <= 2100000000, 'versionCode must be a positive Android version code'
-          version = os.environ.get('INPUT_VERSION_NAME', '').strip() or json.loads(Path('package.json').read_text())['version']
+          version = os.environ.get('INPUT_VERSION_NAME', '').strip() or json.loads(Path('package.json').read_text())['version'] + '.' + os.environ['GITHUB_RUN_NUMBER']
           assert re.fullmatch(r'[A-Za-z0-9._+-]{1,80}', version), 'Invalid version name'
           app_gradle = Path('android/app/build.gradle')
           s = app_gradle.read_text()
@@ -1051,10 +1058,12 @@ jobs:
               dex = [archive.read(n) for n in archive.namelist() if n.startswith('base/dex/') and n.endswith('.dex')]
               for cls in (b'Lcom/quickspend/app/SmsBridgePlugin;', b'Lcom/quickspend/app/SmsReceiver;', b'Lcom/quickspend/app/FloatingCaptureService;', b'Lcom/quickspend/app/SmsStore;', b'Lcom/quickspend/app/PaymentParser;'):
                   assert any(cls in data for data in dex), 'Bundle missing native class: ' + cls.decode()
+              for method in ('overlayStatus', 'openOverlaySettings', 'setOverlayEnabled', 'testOverlay'):
+                  assert any(method.encode() + bytes([0]) in data for data in dex), 'Native floating method missing: ' + method
               assert any(n.endswith('/qs_brand_icon.png') for n in archive.namelist()), 'Native brand icon missing'
               assert 'base/assets/public/assets/quickspend-icon.png' in archive.namelist(), 'Web icon asset missing'
               html = archive.read('base/assets/public/index.html').decode()
-              assert 'nativePromise' in html and 'floating-capture-3' in html, 'Outdated floating-capture HTML bridge'
+              assert 'nativePromise' in html and 'floating-capture-4' in html, 'Outdated floating-capture HTML bridge'
               assert any(n.startswith('META-INF/') and n.upper().endswith(('.RSA', '.DSA', '.EC')) for n in archive.namelist()), 'Bundle has no signing certificate'
           meta = json.loads(Path('release-metadata.json').read_text())
           assert int(root.get(ns + 'versionCode')) == meta['versionCode'], 'Version code mismatch'
