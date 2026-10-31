@@ -52,7 +52,12 @@ jobs:
           INPUT_VERSION_NAME: ${{ inputs.version_name }}
         run: |
           set -euo pipefail
-          mkdir -p www && cp index.html www/
+          if [ ! -s assets/quickspend-icon.png ]; then
+            echo "::error::Missing icon. Upload the assets folder at the repository root along with index.html and .github."
+            exit 1
+          fi
+          mkdir -p www/assets && cp index.html www/
+          cp assets/quickspend-icon.png www/assets/
           npm install
           npm install @capacitor/local-notifications@^6.0.0
           if [ ! -d android ]; then npx cap add android; fi
@@ -97,32 +102,13 @@ jobs:
               String from = ms[0].getOriginatingAddress();
               long ts = ms[0].getTimestampMillis();
               if (!KW.matcher(body).find() || BAD.matcher(body).find() || !AMT.matcher(body).find()) return;
-              try {
-                SharedPreferences p = c.getSharedPreferences(PREFS, 0);
-                JSONArray q = new JSONArray(p.getString(KEY, "[]"));
-                JSONObject o = new JSONObject();
-                o.put("from", from);
-                o.put("body", body);
-                o.put("ts", ts);
-                q.put(o);
-                p.edit().putString(KEY, q.toString()).apply();
-              } catch (Exception e) {
-                return;
-              }
+              try { SmsStore.enqueue(c, from, body, ts, false); }
+              catch (RuntimeException e) { android.util.Log.e("QuickSpend", "Could not store incoming payment", e); }
               try { alert(c, body); } catch (Exception e) { }
             }
 
             static void push(Context c, String from, String body, long ts) {
-              try {
-                SharedPreferences p = c.getSharedPreferences(PREFS, 0);
-                JSONArray q = new JSONArray(p.getString(KEY, "[]"));
-                JSONObject o = new JSONObject();
-                o.put("from", from);
-                o.put("body", body);
-                o.put("ts", ts);
-                q.put(o);
-                p.edit().putString(KEY, q.toString()).apply();
-              } catch (Exception e) { }
+              SmsStore.enqueue(c, from, body, ts, false);
             }
 
             static void alert(Context c, String body) {
@@ -136,7 +122,7 @@ jobs:
               Matcher m = AMT.matcher(body);
               String amt = m.find() ? "\u20b9" + m.group(1) : "Payment";
               Notification n = new NotificationCompat.Builder(c, CH)
-                .setSmallIcon(android.R.drawable.ic_dialog_info)
+                .setSmallIcon(R.drawable.ic_qs_notification)
                 .setContentTitle("Quick Spend: " + amt)
                 .setContentText("Tap to categorise this payment")
                 .setAutoCancel(true)
@@ -242,16 +228,87 @@ jobs:
 
             @PluginMethod
             public void drain(PluginCall call) {
-              SharedPreferences p = getContext().getSharedPreferences(SmsReceiver.PREFS, 0);
-              String q = p.getString(SmsReceiver.KEY, "[]");
-              p.edit().putString(SmsReceiver.KEY, "[]").apply();
-              JSObject r = new JSObject();
               try {
-                r.put("items", new JSArray(q));
-              } catch (Exception e) {
-                r.put("items", new JSArray());
+                org.json.JSONObject snapshot = SmsStore.snapshot(getContext());
+                JSObject result = new JSObject();
+                result.put("items", new JSArray(snapshot.getJSONArray("items").toString()));
+                result.put("entries", new JSArray(snapshot.getJSONArray("entries").toString()));
+                call.resolve(result);
+              } catch (Exception e) { call.reject("Could not read native payment inbox", e); }
+            }
+
+            @PluginMethod
+            public void acknowledgeSaved(PluginCall call) {
+              try {
+                JSArray keys = call.getArray("keys");
+                if (keys == null) { call.reject("Missing saved entry keys"); return; }
+                SmsStore.acknowledge(getContext(), keys);
+                call.resolve();
+              } catch (Exception e) { call.reject("Could not acknowledge saved payments", e); }
+            }
+
+            @PluginMethod
+            public void completeSms(PluginCall call) {
+              String key = call.getString("sourceKey", "");
+              if (key.isEmpty()) { call.reject("Missing payment source key"); return; }
+              try {
+                SmsStore.complete(getContext(), key, null);
+                call.resolve();
+              } catch (Exception e) { call.reject("Could not complete payment", e); }
+            }
+
+            @PluginMethod
+            public void clearNativeInbox(PluginCall call) {
+              try { SmsStore.clear(getContext()); call.resolve(); }
+              catch (Exception e) { call.reject("Could not clear native payment inbox", e); }
+            }
+
+            @PluginMethod
+            public void overlayStatus(PluginCall call) {
+              JSObject result = new JSObject();
+              result.put("allowed", Settings.canDrawOverlays(getContext()));
+              result.put("enabled", FloatingCaptureService.enabled(getContext()));
+              result.put("running", FloatingCaptureService.running());
+              result.put("error", FloatingCaptureService.lastError);
+              call.resolve(result);
+            }
+
+            @PluginMethod
+            public void openOverlaySettings(PluginCall call) {
+              getActivity().runOnUiThread(() -> {
+                try {
+                  getActivity().startActivity(new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                      Uri.parse("package:" + getContext().getPackageName())));
+                  call.resolve();
+                } catch (Exception e) { call.reject("Could not open Display over other apps settings", e); }
+              });
+            }
+
+            @PluginMethod
+            public void setOverlayEnabled(PluginCall call) {
+              boolean enabled = Boolean.TRUE.equals(call.getBoolean("enabled", false));
+              getActivity().runOnUiThread(() -> {
+                try {
+                  if (enabled && !Settings.canDrawOverlays(getContext())) {
+                    call.reject("Allow Display over other apps first"); return;
+                  }
+                  FloatingCaptureService.setEnabled(getContext(), enabled);
+                  if (enabled) FloatingCaptureService.activityVisible(getContext(), true);
+                  if (enabled && !FloatingCaptureService.lastError.isEmpty()) { call.reject(FloatingCaptureService.lastError); return; }
+                  overlayStatus(call);
+                } catch (Exception e) { call.reject("Could not change floating capture setting", e); }
+              });
+            }
+
+            @PluginMethod
+            public void testOverlay(PluginCall call) {
+              if (!Settings.canDrawOverlays(getContext()) || !FloatingCaptureService.enabled(getContext()) || !FloatingCaptureService.running()) {
+                call.reject("Enable the floating shortcut first"); return;
               }
-              call.resolve(r);
+              try {
+                SmsStore.enqueue(getContext(), "QuickSpend preview", "Rs. 1.00 debited at QuickSpend preview on today", System.currentTimeMillis(), true);
+                call.resolve();
+              } catch (Exception e) { call.reject("Could not prepare test bubble", e); }
             }
           }
           EOF
@@ -280,6 +337,18 @@ jobs:
               grab(intent);
             }
 
+            @Override
+            protected void onResume() {
+              super.onResume();
+              FloatingCaptureService.activityVisible(this, true);
+            }
+
+            @Override
+            protected void onPause() {
+              FloatingCaptureService.activityVisible(this, false);
+              super.onPause();
+            }
+
             private void grab(Intent i) {
               if (i == null || !Intent.ACTION_SEND.equals(i.getAction())) return;
               String t = i.getStringExtra(Intent.EXTRA_TEXT);
@@ -290,22 +359,572 @@ jobs:
             }
           }
           EOF
+          cat > $D/PaymentParser.java <<'EOF'
+          package com.quickspend.app;
+
+          import java.util.Locale;
+          import java.util.regex.Matcher;
+          import java.util.regex.Pattern;
+
+          /** Shared amount/type extraction for the native quick-entry panel. */
+          public final class PaymentParser {
+              private static final Pattern AMOUNT = Pattern.compile("(?i)(?:rs\\.?|inr|\u20b9)\\s*([0-9][0-9,]*(?:\\.[0-9]{1,2})?)");
+              private static final Pattern BALANCE = Pattern.compile("(?i)(bal|limit|lmt|avl|available|outstanding|due)[^0-9]{0,12}$");
+              private static final Pattern DEBIT = Pattern.compile("(?i)debited|spent|paid|withdrawn|sent|purchase|transferred|payment of|txn of");
+              private static final Pattern CREDIT = Pattern.compile("(?i)credited|received|deposited|refund");
+              private static final Pattern MERCHANT = Pattern.compile("(?i)\\b(?:at|to|from)\\s+(?!a/c|ac\\b|acct|your|the\\b|vpa|you\\b|rs\\b|inr\\b)([A-Za-z][A-Za-z0-9@ &._*-]{1,28}?)(?=\\s+(?:on|ref|via|upi|using|from|to|dt|date|avl|bal|not|if|call)\\b|[.,;]|$)");
+              public final double amount;
+              public final String type;
+              public final String merchant;
+              private PaymentParser(double amount, String type, String merchant) {
+                  this.amount = amount;
+                  this.type = type;
+                  this.merchant = merchant;
+              }
+              public static PaymentParser parse(String from, String body) {
+                  String text = (body == null ? "" : body).replaceAll("\\s+", " ").trim();
+                  Matcher amountMatcher = AMOUNT.matcher(text);
+                  double amount = 0;
+                  while (amountMatcher.find()) {
+                      String prefix = text.substring(Math.max(0, amountMatcher.start() - 18), amountMatcher.start());
+                      if (BALANCE.matcher(prefix).find()) continue;
+                      try { amount = Double.parseDouble(amountMatcher.group(1).replace(",", "")); } catch (NumberFormatException ignored) { }
+                      if (amount > 0 && !Double.isInfinite(amount)) break;
+                  }
+                  if (amount <= 0) {
+                      Matcher fallback = Pattern.compile("(?i)(?:debited|credited)\\s+(?:by|for|with)?\\s*(?:rs\\.?|inr)?\\s*([0-9][0-9,]*(?:\\.[0-9]+)?)").matcher(text);
+                      if (fallback.find()) try { amount = Double.parseDouble(fallback.group(1).replace(",", "")); } catch (NumberFormatException ignored) { }
+                  }
+                  Matcher debit = DEBIT.matcher(text), credit = CREDIT.matcher(text);
+                  int d = debit.find() ? debit.start() : -1, c = credit.find() ? credit.start() : -1;
+                  String type = d < 0 ? "Income" : c < 0 || d < c ? "Expense" : "Income";
+                  String merchant = "Bank payment";
+                  Matcher merchantMatcher = MERCHANT.matcher(text);
+                  if (merchantMatcher.find()) merchant = merchantMatcher.group(1).trim();
+                  if (merchant.length() > 32) merchant = merchant.substring(0, 32);
+                  if (Double.isNaN(amount) || Double.isInfinite(amount)) amount = 0;
+                  return new PaymentParser(amount, type, merchant);
+              }
+              public String amountText() { return String.format(Locale.US, "%.2f", amount); }
+          }
+          EOF
+          cat > $D/SmsStore.java <<'EOF'
+          package com.quickspend.app;
+
+          import android.content.Context;
+          import android.content.SharedPreferences;
+          import org.json.JSONArray;
+          import org.json.JSONException;
+          import org.json.JSONObject;
+          import java.util.HashSet;
+          import java.util.Set;
+
+          /** Native inbox and completed entries survive app closure until JavaScript acknowledges them. */
+          public final class SmsStore {
+              private static final Object LOCK = new Object();
+              private static final String SAVED = "overlay_saved";
+              private static final String HANDLED = "overlay_handled";
+              private static SharedPreferences prefs(Context c) { return c.getSharedPreferences("qs_sms", Context.MODE_PRIVATE); }
+              private static JSONArray array(SharedPreferences p, String key) {
+                  try { return new JSONArray(p.getString(key, "[]")); } catch (JSONException e) { throw new IllegalStateException("QuickSpend native inbox could not be read", e); }
+              }
+              public static String key(JSONObject item) {
+                  String key = item.optString("sourceKey");
+                  if (!key.isEmpty()) return key;
+                  return item.optLong("ts") + ":" + Integer.toHexString((item.optString("from") + "|" + item.optString("body")).hashCode());
+              }
+              private static JSONArray inbox(SharedPreferences p) {
+                  JSONArray result = array(p, "queue");
+                  for (int i = 0; i < result.length(); i++) {
+                      JSONObject item = result.optJSONObject(i);
+                      if (item != null) try { item.put("sourceKey", key(item)); } catch (JSONException impossible) { throw new IllegalStateException(impossible); }
+                  }
+                  return result;
+              }
+              private static void persist(SharedPreferences.Editor editor) {
+                  if (!editor.commit()) throw new IllegalStateException("QuickSpend could not save to this phone. Check free storage.");
+              }
+              public static void enqueue(Context c, String from, String body, long ts, boolean demo) {
+                  synchronized (LOCK) {
+                      SharedPreferences p = prefs(c);
+                      try {
+                          JSONObject item = new JSONObject().put("from", from).put("body", body).put("ts", ts).put("demo", demo);
+                          String key = key(item);
+                          item.put("sourceKey", key);
+                          JSONArray q = inbox(p), handled = array(p, HANDLED);
+                          for (int i = 0; i < q.length(); i++) if (key.equals(key(q.getJSONObject(i)))) return;
+                          for (int i = 0; i < handled.length(); i++) if (key.equals(handled.optString(i))) return;
+                          { // A preview must not linger in the real payment inbox.
+                              JSONArray clean = new JSONArray();
+                              for (int i = 0; i < q.length(); i++) if (!q.getJSONObject(i).optBoolean("demo")) clean.put(q.get(i));
+                              q = clean;
+                          }
+                          q.put(item);
+                          persist(p.edit().putString("queue", q.toString()));
+                      } catch (JSONException e) { throw new IllegalStateException("Could not queue payment", e); }
+                  }
+                  FloatingCaptureService.refresh(c, true);
+              }
+              public static JSONObject snapshot(Context c) {
+                  synchronized (LOCK) {
+                      SharedPreferences p = prefs(c);
+                      try { return new JSONObject().put("items", inbox(p)).put("entries", array(p, SAVED)); }
+                      catch (JSONException e) { throw new IllegalStateException(e); }
+                  }
+              }
+              public static JSONArray pending(Context c) {
+                  synchronized (LOCK) { return inbox(prefs(c)); }
+              }
+              /** Save atomically before removing the source SMS; the first completion wins. */
+              public static boolean complete(Context c, String sourceKey, JSONObject entry) {
+                  synchronized (LOCK) {
+                      SharedPreferences p = prefs(c);
+                      JSONArray q = inbox(p), keep = new JSONArray(), handled = array(p, HANDLED), saved = array(p, SAVED);
+                      JSONObject item = null;
+                      for (int i = 0; i < q.length(); i++) {
+                          JSONObject candidate = q.optJSONObject(i);
+                          if (candidate == null) continue;
+                          if (sourceKey.equals(key(candidate))) item = candidate;
+                          else keep.put(candidate);
+                      }
+                      if (item == null) return false;
+                      try {
+                          if (entry != null && !item.optBoolean("demo")) {
+                              entry.put("sourceKey", sourceKey).put("nativeKey", sourceKey);
+                              saved.put(entry);
+                          }
+                          handled.put(sourceKey);
+                          JSONArray recent = new JSONArray();
+                          for (int i = Math.max(0, handled.length() - 2000); i < handled.length(); i++) recent.put(handled.get(i));
+                          persist(p.edit().putString("queue", keep.toString()).putString(SAVED, saved.toString()).putString(HANDLED, recent.toString()));
+                      } catch (JSONException e) { throw new IllegalStateException("Could not save payment", e); }
+                  }
+                  FloatingCaptureService.refresh(c, false);
+                  return true;
+              }
+              public static void clear(Context c) {
+                  synchronized (LOCK) {
+                      persist(prefs(c).edit().remove("queue").remove(SAVED).remove(HANDLED));
+                  }
+                  FloatingCaptureService.refresh(c, false);
+              }
+              public static void acknowledge(Context c, JSONArray keys) {
+                  synchronized (LOCK) {
+                      SharedPreferences p = prefs(c);
+                      Set<String> ack = new HashSet<>();
+                      for (int i = 0; i < keys.length(); i++) ack.add(keys.optString(i));
+                      JSONArray saved = array(p, SAVED), keep = new JSONArray();
+                      for (int i = 0; i < saved.length(); i++) {
+                          JSONObject entry = saved.optJSONObject(i);
+                          if (entry != null && !ack.contains(entry.optString("nativeKey"))) keep.put(entry);
+                      }
+                      persist(p.edit().putString(SAVED, keep.toString()));
+                  }
+              }
+          }
+          EOF
+          cat > $D/FloatingCaptureService.java <<'EOF'
+          package com.quickspend.app;
+
+          import android.app.KeyguardManager;
+          import android.app.Notification;
+          import android.app.NotificationChannel;
+          import android.app.NotificationManager;
+          import android.app.PendingIntent;
+          import android.app.Service;
+          import android.content.BroadcastReceiver;
+          import android.content.Context;
+          import android.content.Intent;
+          import android.content.IntentFilter;
+          import android.content.SharedPreferences;
+          import android.content.res.Configuration;
+          import android.content.pm.ServiceInfo;
+          import android.graphics.Color;
+          import android.graphics.PixelFormat;
+          import android.graphics.Typeface;
+          import android.graphics.drawable.GradientDrawable;
+          import android.os.Build;
+          import android.os.Handler;
+          import android.os.IBinder;
+          import android.os.Looper;
+          import android.provider.Settings;
+          import android.text.InputType;
+          import android.util.DisplayMetrics;
+          import android.view.Gravity;
+          import android.view.MotionEvent;
+          import android.view.View;
+          import android.view.ViewConfiguration;
+          import android.view.WindowManager;
+          import android.view.inputmethod.InputMethodManager;
+          import android.widget.Button;
+          import android.widget.EditText;
+          import android.widget.FrameLayout;
+          import android.widget.LinearLayout;
+          import android.widget.ImageView;
+          import android.widget.ScrollView;
+          import android.widget.TextView;
+          import android.widget.Toast;
+          import androidx.core.app.NotificationCompat;
+          import androidx.core.content.ContextCompat;
+          import org.json.JSONArray;
+          import org.json.JSONObject;
+          import java.util.ArrayList;
+          import java.util.List;
+
+          /** User-enabled native overlay. No service launch is attempted from an SMS broadcast. */
+          public class FloatingCaptureService extends Service {
+              private static final String PREFS = "qs_float";
+              private static final String CHANNEL = "qs_capture_service";
+              private static final String PAUSE = "com.quickspend.app.PAUSE_CAPTURE";
+              private static final int NOTIFICATION_ID = 61201;
+              private static volatile FloatingCaptureService instance;
+              private static volatile boolean appVisible;
+              public static volatile String lastError = "";
+              private final Handler main = new Handler(Looper.getMainLooper());
+              private WindowManager windows;
+              private View bubble;
+              private ScrollView panel;
+              private WindowManager.LayoutParams bubbleParams;
+              private boolean hiddenUntilNextPayment;
+              private String panelKey;
+              private BroadcastReceiver screenReceiver;
+              private static final int BG = Color.rgb(21, 21, 27), FG = Color.rgb(244, 244, 246), MUTED = Color.rgb(154, 154, 169), ACCENT = Color.rgb(201, 243, 107);
+
+              public static boolean enabled(Context c) { return c.getSharedPreferences(PREFS, 0).getBoolean("enabled", true); }
+              public static boolean running() { return instance != null; }
+              public static void setEnabled(Context c, boolean enabled) {
+                  if (!c.getSharedPreferences(PREFS, 0).edit().putBoolean("enabled", enabled).commit()) throw new IllegalStateException("Could not save floating capture preference");
+                  if (!enabled) c.stopService(new Intent(c, FloatingCaptureService.class));
+              }
+              public static void activityVisible(Context c, boolean visible) {
+                  appVisible = visible;
+                  if (visible) {
+                      if (enabled(c) && Settings.canDrawOverlays(c)) {
+                          try {
+                              ContextCompat.startForegroundService(c, new Intent(c, FloatingCaptureService.class));
+                              lastError = "";
+                          } catch (RuntimeException e) { lastError = "Quick capture could not start. Open QuickSpend and enable it again."; }
+                      } else if (!Settings.canDrawOverlays(c)) c.stopService(new Intent(c, FloatingCaptureService.class));
+                  }
+                  refresh(c, false);
+              }
+              public static void refresh(Context c, boolean newPayment) {
+                  FloatingCaptureService service = instance;
+                  if (service != null) service.main.post(() -> {
+                      if (newPayment) service.hiddenUntilNextPayment = false;
+                      service.updateOverlay();
+                  });
+              }
+              @Override public IBinder onBind(Intent intent) { return null; }
+              @Override public void onCreate() {
+                  super.onCreate();
+                  instance = this;
+                  windows = (WindowManager) getSystemService(WINDOW_SERVICE);
+                  screenReceiver = new BroadcastReceiver() {
+                      @Override public void onReceive(Context context, Intent intent) { updateOverlay(); }
+                  };
+                  IntentFilter filter = new IntentFilter();
+                  filter.addAction(Intent.ACTION_SCREEN_OFF);
+                  filter.addAction(Intent.ACTION_SCREEN_ON);
+                  filter.addAction(Intent.ACTION_USER_PRESENT);
+                  ContextCompat.registerReceiver(this, screenReceiver, filter, ContextCompat.RECEIVER_NOT_EXPORTED);
+              }
+              @Override public int onStartCommand(Intent intent, int flags, int startId) {
+                  if (intent != null && PAUSE.equals(intent.getAction())) {
+                      setEnabled(this, false);
+                      hideAll();
+                      stopSelf();
+                      return START_NOT_STICKY;
+                  }
+                  if (!enabled(this) || !Settings.canDrawOverlays(this)) {
+                      stopSelf();
+                      return START_NOT_STICKY;
+                  }
+                  try {
+                      NotificationManager manager = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
+                      if (Build.VERSION.SDK_INT >= 26) manager.createNotificationChannel(new NotificationChannel(CHANNEL, "Floating quick capture", NotificationManager.IMPORTANCE_LOW));
+                      Intent launch = getPackageManager().getLaunchIntentForPackage(getPackageName());
+                      PendingIntent open = PendingIntent.getActivity(this, 61202, launch, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+                      PendingIntent pause = PendingIntent.getService(this, 61203, new Intent(this, FloatingCaptureService.class).setAction(PAUSE), PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+                      Notification notification = new NotificationCompat.Builder(this, CHANNEL)
+                          .setSmallIcon(R.drawable.ic_qs_notification)
+                          .setContentTitle("QuickSpend quick capture is on")
+                          .setContentText("A floating shortcut appears for bank payments. Tap Pause to stop.")
+                          .setContentIntent(open).setOngoing(true).setSilent(true)
+                          .setPriority(NotificationCompat.PRIORITY_LOW)
+                          .addAction(android.R.drawable.ic_media_pause, "Pause", pause).build();
+                      if (Build.VERSION.SDK_INT >= 34) startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE);
+                      else startForeground(NOTIFICATION_ID, notification);
+                      lastError = "";
+                      updateOverlay();
+                      return START_STICKY;
+                  } catch (RuntimeException e) {
+                      lastError = "Quick capture could not start. Check permissions and enable it again in QuickSpend.";
+                      stopSelf();
+                      return START_NOT_STICKY;
+                  }
+              }
+              private boolean screenLocked() {
+                  KeyguardManager keyguard = (KeyguardManager) getSystemService(KEYGUARD_SERVICE);
+                  android.os.PowerManager power = (android.os.PowerManager) getSystemService(POWER_SERVICE);
+                  return keyguard.isKeyguardLocked() || !power.isInteractive();
+              }
+              private List<JSONObject> payments() {
+                  JSONArray q = SmsStore.pending(this);
+                  List<JSONObject> result = new ArrayList<>();
+                  for (int i = 0; i < q.length(); i++) {
+                      JSONObject item = q.optJSONObject(i);
+                      if (item != null && PaymentParser.parse(item.optString("from"), item.optString("body")).amount > 0) result.add(item);
+                  }
+                  return result;
+              }
+              private void updateOverlay() {
+                  try {
+                      if (!enabled(this) || !Settings.canDrawOverlays(this)) { hideAll(); stopSelf(); return; }
+                      if (appVisible || screenLocked() || hiddenUntilNextPayment) { hideAll(); return; }
+                      List<JSONObject> q = payments();
+                      if (q.isEmpty()) { hideAll(); return; }
+                      if (panel != null) {
+                          boolean stillPending = false;
+                          for (JSONObject item : q) if (SmsStore.key(item).equals(panelKey)) stillPending = true;
+                          if (stillPending) return;
+                          hidePanel();
+                      }
+                      showBubble(q.size());
+                  } catch (RuntimeException e) {
+                      lastError = "Floating shortcut is unavailable. Your payment is still available in QuickSpend.";
+                      hideAll();
+                  }
+              }
+              private int dp(float value) { return Math.round(value * getResources().getDisplayMetrics().density); }
+              private GradientDrawable shape(int color, int radius) {
+                  GradientDrawable result = new GradientDrawable(); result.setColor(color); result.setCornerRadius(dp(radius)); return result;
+              }
+              private TextView text(String value, int size, int color) {
+                  TextView result = new TextView(this); result.setText(value); result.setTextSize(size); result.setTextColor(color); return result;
+              }
+              private int windowType() { return Build.VERSION.SDK_INT >= 26 ? WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY : WindowManager.LayoutParams.TYPE_PHONE; }
+              private DisplayMetrics display() { DisplayMetrics metrics = new DisplayMetrics(); windows.getDefaultDisplay().getMetrics(metrics); return metrics; }
+              private void showBubble(int count) {
+                  if (bubble != null) {
+                      ((TextView) bubble.findViewWithTag("count")).setText(count > 99 ? "99+" : String.valueOf(count));
+                      bubble.setContentDescription("QuickSpend: " + count + " payments to categorise. Tap to open, drag to move, long press to hide.");
+                      return;
+                  }
+                  FrameLayout container = new FrameLayout(this);
+                  ImageView icon = new ImageView(this); icon.setImageResource(R.drawable.qs_brand_icon); icon.setScaleType(ImageView.ScaleType.CENTER_CROP); icon.setBackground(shape(BG, 30)); icon.setClipToOutline(true);
+                  FrameLayout.LayoutParams circle = new FrameLayout.LayoutParams(dp(52), dp(52), Gravity.CENTER); container.addView(icon, circle);
+                  TextView badge = text(count > 99 ? "99+" : String.valueOf(count), 10, Color.WHITE); badge.setTag("count"); badge.setGravity(Gravity.CENTER); badge.setBackground(shape(Color.rgb(219, 72, 85), 12));
+                  container.addView(badge, new FrameLayout.LayoutParams(dp(23), dp(20), Gravity.TOP | Gravity.END));
+                  container.setElevation(dp(8)); container.setContentDescription("QuickSpend: " + count + " payments to categorise. Tap to open, drag to move, long press to hide.");
+                  SharedPreferences p = getSharedPreferences(PREFS, 0); DisplayMetrics screen = display();
+                  bubbleParams = new WindowManager.LayoutParams(dp(60), dp(60), windowType(), WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE | WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL, PixelFormat.TRANSLUCENT);
+                  bubbleParams.gravity = Gravity.TOP | Gravity.START;
+                  bubbleParams.x = Math.max(0, Math.min(p.getInt("x", screen.widthPixels - dp(72)), screen.widthPixels - dp(60)));
+                  bubbleParams.y = Math.max(dp(24), Math.min(p.getInt("y", dp(220)), screen.heightPixels - dp(100)));
+                  container.setOnClickListener(view -> { List<JSONObject> q = payments(); if (!q.isEmpty()) showPanel(q.get(0)); });
+                  container.setOnTouchListener(new View.OnTouchListener() {
+                      float downX, downY; int oldX, oldY; long downTime; boolean moved;
+                      @Override public boolean onTouch(View view, MotionEvent event) {
+                          if (event.getActionMasked() == MotionEvent.ACTION_DOWN) {
+                              downX = event.getRawX(); downY = event.getRawY(); oldX = bubbleParams.x; oldY = bubbleParams.y; moved = false; downTime = event.getEventTime(); return true;
+                          }
+                          if (event.getActionMasked() == MotionEvent.ACTION_MOVE) {
+                              float dx = event.getRawX() - downX, dy = event.getRawY() - downY;
+                              if (Math.hypot(dx, dy) > ViewConfiguration.get(FloatingCaptureService.this).getScaledTouchSlop()) moved = true;
+                              if (moved) {
+                                  DisplayMetrics screen = display();
+                                  bubbleParams.x = Math.max(0, Math.min(oldX + Math.round(dx), screen.widthPixels - dp(60)));
+                                  bubbleParams.y = Math.max(dp(24), Math.min(oldY + Math.round(dy), screen.heightPixels - dp(100)));
+                                  try { windows.updateViewLayout(view, bubbleParams); } catch (RuntimeException ignored) { }
+                              }
+                              return true;
+                          }
+                          if (event.getActionMasked() == MotionEvent.ACTION_UP) {
+                              if (moved) getSharedPreferences(PREFS, 0).edit().putInt("x", bubbleParams.x).putInt("y", bubbleParams.y).apply();
+                              else if (event.getEventTime() - downTime > 650) { hiddenUntilNextPayment = true; hideAll(); Toast.makeText(FloatingCaptureService.this, "Shortcut hidden. Payments stay in Review.", Toast.LENGTH_SHORT).show(); }
+                              else view.performClick();
+                              return true;
+                          }
+                          return event.getActionMasked() == MotionEvent.ACTION_CANCEL;
+                      }
+                  });
+                  windows.addView(container, bubbleParams);
+                  bubble = container;
+                  lastError = "";
+              }
+              private LinearLayout row() { LinearLayout r = new LinearLayout(this); r.setOrientation(LinearLayout.HORIZONTAL); r.setGravity(Gravity.CENTER_VERTICAL); return r; }
+              private Button button(String label, boolean selected) {
+                  Button b = new Button(this); b.setText(label); b.setTextSize(12); b.setAllCaps(false); b.setTextColor(selected ? Color.BLACK : FG); b.setBackground(shape(selected ? ACCENT : Color.rgb(36, 36, 46), 12)); b.setMinWidth(0); b.setMinimumWidth(0); b.setMinHeight(dp(44)); b.setMinimumHeight(dp(44)); b.setPadding(dp(8), dp(6), dp(8), dp(6)); return b;
+              }
+              private void append(LinearLayout root, View child, int top) {
+                  LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2); lp.topMargin = dp(top); root.addView(child, lp);
+              }
+              private void showPanel(JSONObject item) {
+                  hideBubble(); hidePanel(); panelKey = SmsStore.key(item);
+                  PaymentParser details = PaymentParser.parse(item.optString("from"), item.optString("body"));
+                  ScrollView scroll = new ScrollView(this); scroll.setFillViewport(false); scroll.setBackground(shape(BG, 24));
+                  LinearLayout root = new LinearLayout(this); root.setOrientation(LinearLayout.VERTICAL); root.setPadding(dp(18), dp(14), dp(18), dp(18)); scroll.addView(root);
+                  LinearLayout header = row(); TextView title = text(item.optBoolean("demo") ? "Quick capture preview" : "Quick capture", 17, FG); title.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+                  header.addView(title, new LinearLayout.LayoutParams(0, -2, 1)); Button close = button("×", false); close.setContentDescription("Close quick capture"); header.addView(close, new LinearLayout.LayoutParams(dp(44), dp(44))); append(root, header, 0);
+                  TextView merchant = text(item.optBoolean("demo") ? "Preview only · no expense will be saved" : details.merchant, 13, MUTED); append(root, merchant, 8);
+                  LinearLayout amountRow = row(); amountRow.setGravity(Gravity.CENTER);
+                  TextView amountLabel = text("₹" + details.amountText(), 33, FG); amountLabel.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+                  EditText amount = new EditText(this); amount.setText(details.amountText()); amount.setTextSize(28); amount.setTextColor(FG); amount.setSingleLine(true); amount.setSelectAllOnFocus(true); amount.setInputType(InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_DECIMAL); amount.setVisibility(View.GONE); amount.setContentDescription("Payment amount in rupees");
+                  amountRow.addView(amountLabel); amountRow.addView(amount, new LinearLayout.LayoutParams(0, -2, 1));
+                  Button pencil = button("✎", false); pencil.setContentDescription("Edit amount"); LinearLayout.LayoutParams penLp = new LinearLayout.LayoutParams(dp(44), dp(44)); penLp.leftMargin = dp(8); amountRow.addView(pencil, penLp); append(root, amountRow, 16);
+                  final String[] type = {details.type}, category = {null};
+                  LinearLayout types = row(); append(root, types, 16);
+                  EditText person = new EditText(this); person.setTextColor(FG); person.setTextSize(14); person.setSingleLine(true); person.setHintTextColor(MUTED); person.setHint("Person's name"); person.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_CAP_WORDS); person.setContentDescription("Person's name for money lent or borrowed"); append(root, person, 10); person.setVisibility(View.GONE);
+                  TextView categoryTitle = text("Choose a category", 13, MUTED); append(root, categoryTitle, 12);
+                  LinearLayout categories = new LinearLayout(this); categories.setOrientation(LinearLayout.VERTICAL); append(root, categories, 8);
+                  Runnable drawCategories = () -> {
+                      categories.removeAllViews();
+                      String[] labels = type[0].equals("Expense") ? new String[]{"Food", "Travel", "Shopping", "Bills", "Fun", "Health", "Other"} : type[0].equals("Income") ? new String[]{"Salary", "Gift", "Refund", "Other"} : new String[]{"Friend", "Family"};
+                      for (int i = 0; i < labels.length; i += 2) {
+                          LinearLayout categoryRow = row();
+                          for (int j = i; j < Math.min(i + 2, labels.length); j++) {
+                              String label = labels[j]; Button chip = button(label, label.equals(category[0])); chip.setContentDescription(label + " category");
+                              LinearLayout.LayoutParams chipLp = new LinearLayout.LayoutParams(0, dp(46), 1); chipLp.setMargins(dp(3), dp(3), dp(3), dp(3)); categoryRow.addView(chip, chipLp);
+                              chip.setOnClickListener(view -> { category[0] = label; for (int a = 0; a < categories.getChildCount(); a++) { LinearLayout r = (LinearLayout) categories.getChildAt(a); for (int b = 0; b < r.getChildCount(); b++) { Button other = (Button) r.getChildAt(b); boolean active = other.getText().toString().equals(label); other.setTextColor(active ? Color.BLACK : FG); other.setBackground(shape(active ? ACCENT : Color.rgb(36, 36, 46), 12)); } } });
+                          }
+                          categories.addView(categoryRow);
+                      }
+                  };
+                  for (String label : new String[]{"Expense", "Income", "Lent", "Borrowed"}) {
+                      Button choice = button(label, label.equals(type[0])); choice.setTextSize(11);
+                      LinearLayout.LayoutParams choiceLp = new LinearLayout.LayoutParams(0, dp(44), 1); choiceLp.setMargins(dp(2), 0, dp(2), 0); types.addView(choice, choiceLp);
+                      choice.setOnClickListener(view -> {
+                          type[0] = label; category[0] = null;
+                          for (int i = 0; i < types.getChildCount(); i++) { Button other = (Button) types.getChildAt(i); boolean active = other.getText().toString().equals(label); other.setTextColor(active ? Color.BLACK : FG); other.setBackground(shape(active ? ACCENT : Color.rgb(36, 36, 46), 12)); }
+                          boolean debt = label.equals("Lent") || label.equals("Borrowed"); person.setVisibility(debt ? View.VISIBLE : View.GONE); person.setHint(label.equals("Lent") ? "Who did you lend to?" : "Who did you borrow from?"); drawCategories.run();
+                      });
+                  }
+                  drawCategories.run();
+                  TextView error = text("", 12, Color.rgb(255, 128, 128)); append(root, error, 8);
+                  LinearLayout actions = row(); Button later = button("Later", false), save = button(item.optBoolean("demo") ? "Finish test" : "Save", true);
+                  LinearLayout.LayoutParams actionLp = new LinearLayout.LayoutParams(0, dp(48), 1); actionLp.setMargins(dp(3), dp(6), dp(3), 0); actions.addView(later, actionLp); actions.addView(save, new LinearLayout.LayoutParams(actionLp)); append(root, actions, 8);
+                  TextView note = text("Tap × to collapse. Long press the bubble to hide it.", 11, MUTED); note.setGravity(Gravity.CENTER); append(root, note, 10);
+                  WindowManager.LayoutParams lp = new WindowManager.LayoutParams(Math.min(dp(380), display().widthPixels - dp(24)), Math.min(dp(590), display().heightPixels - dp(80)), windowType(), WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL | WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH, PixelFormat.TRANSLUCENT);
+                  lp.gravity = Gravity.CENTER; lp.softInputMode = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE;
+                  scroll.setOnTouchListener((view, event) -> { if (event.getAction() == MotionEvent.ACTION_OUTSIDE) { collapsePanel(); return true; } return false; });
+                  close.setOnClickListener(view -> collapsePanel());
+                  pencil.setOnClickListener(view -> { amountLabel.setVisibility(View.GONE); amount.setVisibility(View.VISIBLE); amount.requestFocus(); amount.post(() -> ((InputMethodManager) getSystemService(INPUT_METHOD_SERVICE)).showSoftInput(amount, InputMethodManager.SHOW_IMPLICIT)); });
+                  later.setOnClickListener(view -> { if (item.optBoolean("demo")) { try { SmsStore.complete(this, SmsStore.key(item), null); } catch (RuntimeException e) { error.setText("Could not dismiss preview. Try again."); return; } } hiddenUntilNextPayment = true; hideAll(); Toast.makeText(this, "Saved for later in Review", Toast.LENGTH_SHORT).show(); });
+                  save.setOnClickListener(view -> {
+                      if (item.optBoolean("demo")) {
+                          try { SmsStore.complete(this, SmsStore.key(item), null); hidePanel(); updateOverlay(); Toast.makeText(this, "Preview complete. No expense was added.", Toast.LENGTH_SHORT).show(); } catch (RuntimeException e) { error.setText("Could not finish preview. Try again."); } return;
+                      }
+                      double value;
+                      try { value = Double.parseDouble(amount.getText().toString().trim()); } catch (NumberFormatException e) { value = 0; }
+                      if (value <= 0 || Double.isNaN(value) || Double.isInfinite(value)) { error.setText("Enter an amount greater than zero."); return; }
+                      if (category[0] == null) { error.setText("Choose a category."); return; }
+                      String who = person.getText().toString().trim();
+                      if ((type[0].equals("Lent") || type[0].equals("Borrowed")) && who.isEmpty()) { error.setText("Add the person's name."); person.requestFocus(); return; }
+                      save.setEnabled(false);
+                      try {
+                          JSONObject entry = new JSONObject().put("t", type[0]).put("a", value).put("c", category[0]).put("m", details.merchant).put("who", who).put("ts", item.optLong("ts", System.currentTimeMillis())).put("settled", 0).put("smsFrom", item.optString("from")).put("smsBody", item.optString("body"));
+                          boolean saved = SmsStore.complete(this, SmsStore.key(item), entry);
+                          hidePanel(); updateOverlay();
+                          Toast.makeText(this, saved ? "Saved to QuickSpend" : "This payment was already handled", Toast.LENGTH_SHORT).show();
+                      } catch (Exception e) { save.setEnabled(true); error.setText("Could not save. Check free storage and try again."); }
+                  });
+                  windows.addView(scroll, lp); panel = scroll;
+              }
+              private void collapsePanel() { hidePanel(); updateOverlay(); }
+              private void hideBubble() { if (bubble != null) { try { windows.removeView(bubble); } catch (RuntimeException ignored) { } bubble = null; } }
+              private void hidePanel() {
+                  if (panel != null) {
+                      ((InputMethodManager) getSystemService(INPUT_METHOD_SERVICE)).hideSoftInputFromWindow(panel.getWindowToken(), 0);
+                      try { windows.removeView(panel); } catch (RuntimeException ignored) { }
+                      panel = null; panelKey = null;
+                  }
+              }
+              private void hideAll() { hidePanel(); hideBubble(); }
+              @Override public void onConfigurationChanged(Configuration config) { super.onConfigurationChanged(config); hideAll(); updateOverlay(); }
+              @Override public void onDestroy() {
+                  main.removeCallbacksAndMessages(null); hideAll();
+                  if (screenReceiver != null) { try { unregisterReceiver(screenReceiver); } catch (RuntimeException ignored) { } }
+                  instance = null; stopForeground(true); super.onDestroy();
+              }
+          }
+          EOF
           python3 - <<'PY'
-          p = 'android/app/src/main/AndroidManifest.xml'
-          s = open(p).read()
-          perms = '<uses-permission android:name="android.permission.RECEIVE_SMS"/>\n<uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>\n'
-          rec = '<receiver android:name=".SmsReceiver" android:exported="true" android:permission="android.permission.BROADCAST_SMS"><intent-filter android:priority="999"><action android:name="android.provider.Telephony.SMS_RECEIVED"/></intent-filter></receiver>\n'
-          share = '<intent-filter><action android:name="android.intent.action.SEND"/><category android:name="android.intent.category.DEFAULT"/><data android:mimeType="text/plain"/></intent-filter>\n'
-          for permission in ('RECEIVE_SMS', 'POST_NOTIFICATIONS'):
-              full = 'android.permission.' + permission
-              if full not in s:
-                  s = s.replace('<application', '<uses-permission android:name="' + full + '"/>\n<application', 1)
-          if 'SmsReceiver' not in s:
-              s = s.replace('</application>', rec + '</application>', 1)
-          if 'android.intent.action.SEND' not in s:
-              s = s.replace('</activity>', share + '</activity>', 1)
-          open(p, 'w').write(s)
+          from pathlib import Path
+          import xml.etree.ElementTree as ET
+          p = Path('android/app/src/main/AndroidManifest.xml')
+          ns = 'http://schemas.android.com/apk/res/android'
+          ET.register_namespace('android', ns)
+          a = '{' + ns + '}'
+          root = ET.fromstring(p.read_text())
+          required = ('RECEIVE_SMS', 'POST_NOTIFICATIONS', 'SYSTEM_ALERT_WINDOW', 'FOREGROUND_SERVICE', 'FOREGROUND_SERVICE_SPECIAL_USE')
+          existing = {node.get(a + 'name') for node in root.findall('uses-permission')}
+          for short in required:
+              name = 'android.permission.' + short
+              if name not in existing:
+                  root.insert(0, ET.Element('uses-permission', {a + 'name': name}))
+          app = root.find('application')
+          assert app is not None
+          receiver = next((r for r in app.findall('receiver') if r.get(a + 'name') in ('.SmsReceiver', 'com.quickspend.app.SmsReceiver')), None)
+          if receiver is None:
+              receiver = ET.SubElement(app, 'receiver', {a + 'name': '.SmsReceiver', a + 'exported': 'true', a + 'permission': 'android.permission.BROADCAST_SMS'})
+              f = ET.SubElement(receiver, 'intent-filter')
+              ET.SubElement(f, 'action', {a + 'name': 'android.provider.Telephony.SMS_RECEIVED'})
+          activity = next((node for node in app.findall('activity') if node.get(a + 'name', '').endswith('MainActivity')), None)
+          assert activity is not None, 'Cannot find the main activity'
+          if not any(node.get(a + 'name') == 'android.intent.action.SEND' for node in activity.findall('./intent-filter/action')):
+              f = ET.SubElement(activity, 'intent-filter')
+              ET.SubElement(f, 'action', {a + 'name': 'android.intent.action.SEND'})
+              ET.SubElement(f, 'category', {a + 'name': 'android.intent.category.DEFAULT'})
+              ET.SubElement(f, 'data', {a + 'mimeType': 'text/plain'})
+          service = next((node for node in app.findall('service') if node.get(a + 'name') in ('.FloatingCaptureService', 'com.quickspend.app.FloatingCaptureService')), None)
+          if service is None:
+              service = ET.SubElement(app, 'service', {a + 'name': '.FloatingCaptureService'})
+          service.set(a + 'exported', 'false')
+          service.set(a + 'foregroundServiceType', 'specialUse')
+          for node in list(service.findall('property')):
+              if node.get(a + 'name') == 'android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE':
+                  service.remove(node)
+          ET.SubElement(service, 'property', {
+              a + 'name': 'android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE',
+              a + 'value': 'User-enabled floating expense capture. After a bank payment SMS, a movable overlay lets the user categorise and save that payment over their current app. An ongoing notification exposes a Pause action; the overlay is hidden on the lock screen. No screen content is read.'
+          })
+          ET.indent(root)
+          p.write_text(ET.tostring(root, encoding='unicode'))
           PY
+          python3 - <<'PY_ICON'
+          from pathlib import Path
+          import shutil
+          source = Path('assets/quickspend-icon.png')
+          assert source.is_file(), 'Upload the assets folder containing quickspend-icon.png'
+          res = Path('android/app/src/main/res')
+          (res / 'drawable-nodpi').mkdir(parents=True, exist_ok=True)
+          shutil.copyfile(source, res / 'drawable-nodpi/qs_brand_icon.png')
+          # Remove only the generated launcher's old resources to avoid density variants
+          # selecting the template icon instead of the approved artwork.
+          for folder in res.glob('mipmap-*'):
+              if folder.is_dir():
+                  for file in folder.glob('ic_launcher*'):
+                      if file.is_file():
+                          file.unlink()
+          bitmap = '<bitmap xmlns:android="http://schemas.android.com/apk/res/android" android:src="@drawable/qs_brand_icon" android:gravity="fill" android:filter="true" />'
+          legacy = res / 'mipmap-anydpi'
+          legacy.mkdir(parents=True, exist_ok=True)
+          for name in ('ic_launcher.xml', 'ic_launcher_round.xml'):
+              (legacy / name).write_text(bitmap)
+          adaptive = res / 'mipmap-anydpi-v26'
+          adaptive.mkdir(parents=True, exist_ok=True)
+          icon = '<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android"><background android:drawable="@color/qs_icon_background"/><foreground android:drawable="@drawable/qs_icon_foreground"/></adaptive-icon>'
+          for name in ('ic_launcher.xml', 'ic_launcher_round.xml'):
+              (adaptive / name).write_text(icon)
+          (res / 'drawable').mkdir(parents=True, exist_ok=True)
+          (res / 'drawable/qs_icon_foreground.xml').write_text(bitmap)
+          (res / 'values').mkdir(parents=True, exist_ok=True)
+          (res / 'values/qs_icon_background.xml').write_text('<resources><color name="qs_icon_background">#09090C</color></resources>')
+          # Android status-bar icons require a monochrome shape, not the full-colour PNG.
+          (res / 'drawable/ic_qs_notification.xml').write_text('<vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="24dp" android:height="24dp" android:viewportWidth="128" android:viewportHeight="128"><path android:fillColor="@android:color/transparent" android:strokeColor="#FFFFFFFF" android:strokeWidth="16" android:strokeLineCap="round" android:strokeLineJoin="round" android:pathData="M92,98 A44,44 0,1 0,65 108 M68,77 L108,116"/></vector>')
+          print('Installed approved QuickSpend icon, adaptive launcher resources and monochrome notification symbol')
+          PY_ICON
           grep -q POST_NOTIFICATIONS android/app/src/main/AndroidManifest.xml
           grep -q RECEIVE_SMS android/app/src/main/AndroidManifest.xml
           grep -q SmsBridgePlugin android/app/src/main/java/com/quickspend/app/MainActivity.java
@@ -415,19 +1034,25 @@ jobs:
           assert int(root.find('uses-sdk').get(ns + 'targetSdkVersion')) >= 36, 'Target API must be at least 36'
           assert root.find('application').get(ns + 'debuggable', 'false') == 'false', 'Release is debuggable'
           permissions = {p.get(ns + 'name') for p in root.findall('uses-permission')}
-          assert {'android.permission.POST_NOTIFICATIONS', 'android.permission.RECEIVE_SMS'} <= permissions, 'Native permissions missing'
+          assert {'android.permission.POST_NOTIFICATIONS', 'android.permission.RECEIVE_SMS', 'android.permission.SYSTEM_ALERT_WINDOW', 'android.permission.FOREGROUND_SERVICE', 'android.permission.FOREGROUND_SERVICE_SPECIAL_USE'} <= permissions, 'Native permissions missing'
+          service = next((node for node in root.find('application').findall('service') if node.get(ns + 'name', '').endswith('FloatingCaptureService')), None)
+          assert service is not None and service.get(ns + 'exported') == 'false', 'Overlay service missing or exported'
+          assert service.get(ns + 'foregroundServiceType') == 'specialUse', 'Overlay service type missing'
+          assert service.find('property') is not None, 'Foreground service use-case explanation missing'
           with ZipFile('android/app/build/outputs/bundle/release/app-release.aab') as archive:
               dex = [archive.read(n) for n in archive.namelist() if n.startswith('base/dex/') and n.endswith('.dex')]
-              for cls in (b'Lcom/quickspend/app/SmsBridgePlugin;', b'Lcom/quickspend/app/SmsReceiver;'):
+              for cls in (b'Lcom/quickspend/app/SmsBridgePlugin;', b'Lcom/quickspend/app/SmsReceiver;', b'Lcom/quickspend/app/FloatingCaptureService;', b'Lcom/quickspend/app/SmsStore;', b'Lcom/quickspend/app/PaymentParser;'):
                   assert any(cls in data for data in dex), 'Bundle missing native class: ' + cls.decode()
+              assert any(n.endswith('/qs_brand_icon.png') for n in archive.namelist()), 'Native brand icon missing'
+              assert 'base/assets/public/assets/quickspend-icon.png' in archive.namelist(), 'Web icon asset missing'
               html = archive.read('base/assets/public/index.html').decode()
-              assert 'nativePromise' in html, 'Outdated HTML bridge'
+              assert 'nativePromise' in html and 'floating-capture-3' in html, 'Outdated floating-capture HTML bridge'
               assert any(n.startswith('META-INF/') and n.upper().endswith(('.RSA', '.DSA', '.EC')) for n in archive.namelist()), 'Bundle has no signing certificate'
           meta = json.loads(Path('release-metadata.json').read_text())
           assert int(root.get(ns + 'versionCode')) == meta['versionCode'], 'Version code mismatch'
           meta['verification'] = 'passed'
           Path('dist/build-evidence.json').write_text(json.dumps(meta, indent=2))
-          print('VERIFIED: signed release AAB, API 36, SMS bridge, receiver, permissions and version code.')
+          print('VERIFIED: signed release AAB, API 36, SMS bridge, native floating capture, receiver, permissions and version code.')
           PY_VERIFY
           cp "$AAB" dist/quickspend-release.aab
           sha256sum dist/quickspend-release.aab > dist/SHA256SUMS.txt
