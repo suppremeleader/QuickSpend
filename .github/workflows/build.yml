@@ -326,7 +326,7 @@ jobs:
           for name in ('compileSdkVersion', 'targetSdkVersion'):
               s, count = re.subn(r'\b' + name + r'\s*=\s*\d+', name + ' = 36', s)
               assert count == 1, 'Cannot locate ' + name
-          variables.write_text(s)
+          variables.write_text(re.sub(r'\bminSdkVersion\s*=\s*\d+', 'minSdkVersion = 24', s))
           root_gradle = Path('android/build.gradle')
           s, count = re.subn(r'com.android.tools.build:gradle:[^\x27\x22\s]+', 'com.android.tools.build:gradle:8.11.1', root_gradle.read_text())
           assert count == 1, 'Cannot locate Android Gradle plugin version'
