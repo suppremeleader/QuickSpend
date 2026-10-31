@@ -7,8 +7,8 @@ public class CaptureMotionTest {
             if (!(end[0] <= -69 || end[0] >= 469 || end[1] <= -69 || end[1] >= 869)) throw new AssertionError("Did not leave screen");
             float cross=(end[0]-x)*direction[1]-(end[1]-y)*direction[0];
             if (Math.abs(cross)>.01) throw new AssertionError("Exit changed pull direction");
-            if ((end[0]-x)*direction[0]+(end[1]-y)*direction[1]<=0) throw new AssertionError("Exit reversed direction");
+            if ((end[0]-x)*direction[0]+(end[1]-y)*direction[1]>=0) throw new AssertionError("Exit must oppose pull direction");
         }
-        System.out.println("PASS: all eight pull directions exit the screen along the release vector");
+        System.out.println("PASS: all eight pull directions exit the screen opposite the pull vector");
     }
 }

@@ -1,9 +1,9 @@
 const fs=require('fs'),vm=require('vm'),assert=require('assert'),path=require('path');
 const html=fs.readFileSync(path.join(__dirname,'../index.html'),'utf8');
 const script=html.split('<script>')[1].split('</script>')[0];
-function app({seen=true,broken=false,savedLanguage=null,languageFails=false}={}){
+function app({seen=true,broken=false,savedLanguage=null,languageFails=false,savedState=null}={}){
  const nodes=new Map(),listeners={};function node(s){if(!nodes.has(s)){const classes=new Set();nodes.set(s,{innerHTML:'',textContent:'',style:{},classList:{add:x=>classes.add(x),remove:x=>classes.delete(x),contains:x=>classes.has(x),toggle(){}},attrs:{},setAttribute(k,v){this.attrs[k]=v},addEventListener(){},dataset:{}})}return nodes.get(s)}
- const data=new Map(seen?[['qs_ob','1'],['qs_p2','1']]:[]);if(savedLanguage)data.set('qs_language',savedLanguage);let completed=[],acks=[];
+ const data=new Map(seen?[['qs_ob','1'],['qs_p2','1']]:[]);if(savedLanguage)data.set('qs_language',savedLanguage);if(savedState)data.set('qs1',savedState);let completed=[],acks=[];
  const inbox={items:[{sourceKey:'payment',from:'HDFC',body:'Rs.125 debited at Shop on today',amount:125,ts:Date.now()}],entries:[]};
  const c={Date,Number,console:{warn(){}},Set,Map,JSON,document:{documentElement:node('html'),querySelector:node,querySelectorAll:()=>[],addEventListener(){},hidden:false},localStorage:{getItem:k=>data.get(k)||null,setItem:(k,v)=>data.set(k,v),removeItem:k=>data.delete(k)},window:{Capacitor:{isNativePlatform:()=>true,nativePromise:async(p,m,o)=>{
   if(m==='setLanguage'){if(languageFails)throw Error('Language unavailable');return {language:o.language}}

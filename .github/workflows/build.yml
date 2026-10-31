@@ -42,6 +42,7 @@ jobs:
           node tests/capture-regression.cjs
           node tests/app-inbox.cjs
           node tests/language.cjs
+          node tests/budgets.cjs
       - uses: actions/setup-java@v5
         with:
           distribution: temurin
@@ -181,7 +182,7 @@ jobs:
               r.put("sms", getPermissionState("sms") == PermissionState.GRANTED);
               r.put("language", QsLanguage.get(getContext()));
               r.put("languageChosen", QsLanguage.chosen(getContext()));
-              r.put("bridgeRevision", "floating-capture-7");
+              r.put("bridgeRevision", "floating-capture-8");
               try {
                 android.content.pm.PackageInfo info = getContext().getPackageManager().getPackageInfo(getContext().getPackageName(), 0);
                 r.put("nativeBuild", Build.VERSION.SDK_INT >= 28 ? info.getLongVersionCode() : info.versionCode);
@@ -589,7 +590,7 @@ jobs:
               public static float[] exit(float x, float y, float dx, float dy, float width, float height, float margin) {
                   float magnitude=(float)Math.hypot(dx,dy);
                   if (magnitude < 1) return new float[]{x, -margin};
-                  float ux=dx/magnitude, uy=dy/magnitude;
+                  float ux=-dx/magnitude, uy=-dy/magnitude;
                   float tx=ux > .0001f ? (width+margin-x)/ux : ux < -.0001f ? (-margin-x)/ux : Float.POSITIVE_INFINITY;
                   float ty=uy > .0001f ? (height+margin-y)/uy : uy < -.0001f ? (-margin-y)/uy : Float.POSITIVE_INFINITY;
                   float t=Math.max(0,Math.min(tx,ty));
@@ -674,7 +675,7 @@ jobs:
               private boolean hiddenUntilNextPayment;
               private String panelKey;
               private BroadcastReceiver screenReceiver;
-              private static final int BG = Color.rgb(17, 24, 23), FG = Color.rgb(244, 244, 246), MUTED = Color.rgb(154, 154, 169), ACCENT = Color.rgb(201, 243, 107);
+              private static final int BG = Color.rgb(21, 21, 27), FG = Color.rgb(244, 244, 246), MUTED = Color.rgb(154, 154, 169), ACCENT = Color.rgb(201, 243, 107);
 
               public static boolean enabled(Context c) { return c.getSharedPreferences(PREFS, 0).getBoolean("enabled", true); }
               public static boolean running() { return instance != null; }
@@ -871,8 +872,8 @@ jobs:
                   return Build.VERSION.SDK_INT >= 26 ? ValueAnimator.areAnimatorsEnabled() : Settings.Global.getFloat(getContentResolver(), Settings.Global.ANIMATOR_DURATION_SCALE, 1f) != 0;
               }
               private android.graphics.drawable.Drawable chipBackground(boolean selected) {
-                  GradientDrawable base = shape(selected ? ACCENT : Color.rgb(34, 45, 41), 26);
-                  base.setStroke(dp(1), selected ? ACCENT : Color.rgb(55, 60, 51));
+                  GradientDrawable base = shape(selected ? ACCENT : Color.rgb(29, 29, 37), 26);
+                  base.setStroke(dp(1), selected ? ACCENT : Color.rgb(49,49,60));
                   return new RippleDrawable(ColorStateList.valueOf(0x28ffffff), base, null);
               }
               private class TetherView extends View {
@@ -937,14 +938,14 @@ jobs:
                   hideBubble(); hidePanel(); panelKey = SmsStore.key(item);
                   PaymentParser details = PaymentParser.parse(item.optString("from"), item.optString("body"));
                   ScrollView scroll = new ScrollView(this); scroll.setFillViewport(false); scroll.setVerticalScrollBarEnabled(false); scroll.setClipToOutline(true);
-                  GradientDrawable card = new GradientDrawable(GradientDrawable.Orientation.TL_BR, new int[]{Color.rgb(35,53,45), Color.rgb(17,25,24)}); card.setCornerRadius(dp(36)); card.setStroke(dp(1), Color.rgb(67,88,72)); scroll.setBackground(card); scroll.setElevation(dp(16));
+                  GradientDrawable card = new GradientDrawable(GradientDrawable.Orientation.TL_BR, new int[]{Color.rgb(32,32,42), Color.rgb(18,18,23)}); card.setCornerRadius(dp(36)); card.setStroke(dp(1), Color.rgb(49,49,60)); scroll.setBackground(card); scroll.setElevation(dp(16));
                   LinearLayout root = new LinearLayout(this); root.setOrientation(LinearLayout.VERTICAL); root.setPadding(dp(20), dp(18), dp(20), dp(24)); scroll.addView(root);
                   LinearLayout brand = row(); ImageView logo = new ImageView(this); logo.setImageResource(R.drawable.qs_brand_icon); logo.setBackground(shape(BG, 10)); logo.setClipToOutline(true); brand.addView(logo, new LinearLayout.LayoutParams(dp(28), dp(28)));
                   TextView brandName = text(tr("QUICKSPEND"), 11, ACCENT); brandName.setLetterSpacing(.16f); LinearLayout.LayoutParams brandLp = new LinearLayout.LayoutParams(-2,-2); brandLp.leftMargin=dp(10); brand.addView(brandName, brandLp); append(root, brand, 0);
                   LinearLayout header = row(); TextView title = text(tr(item.optBoolean("demo") ? "Try quick capture" : "Quick capture"), 19, FG); title.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
                   header.addView(title, new LinearLayout.LayoutParams(0, -2, 1)); Button fullscreen = button("⛶", false); fullscreen.setContentDescription(tr("Expand quick capture to fullscreen")); header.addView(fullscreen, new LinearLayout.LayoutParams(dp(44),dp(44))); Button close = button("×", false); close.setContentDescription(tr("Close quick capture")); header.addView(close, new LinearLayout.LayoutParams(dp(44), dp(44))); append(root, header, 10);
                   TextView merchant = text(item.optBoolean("demo") ? tr("Preview only · no expense will be saved") : details.merchant, 13, MUTED); append(root, merchant, 8);
-                  LinearLayout amountRow = row(); amountRow.setGravity(Gravity.CENTER); amountRow.setPadding(dp(12),dp(22),dp(12),dp(22)); amountRow.setBackground(shape(Color.rgb(22,35,28),30));
+                  LinearLayout amountRow = row(); amountRow.setGravity(Gravity.CENTER); amountRow.setPadding(dp(12),dp(22),dp(12),dp(22)); amountRow.setBackground(shape(Color.rgb(13,13,17),26));
                   TextView amountLabel = text("₹" + details.amountText(), 40, ACCENT); amountLabel.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
                   EditText amount = new EditText(this); amount.setText(details.amountText()); amount.setTextSize(28); amount.setTextColor(FG); amount.setSingleLine(true); amount.setSelectAllOnFocus(true); amount.setInputType(InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_DECIMAL); amount.setVisibility(View.GONE); amount.setContentDescription(tr("Payment amount in rupees"));
                   amountRow.addView(amountLabel); amountRow.addView(amount, new LinearLayout.LayoutParams(0, -2, 1));
@@ -980,7 +981,6 @@ jobs:
                   TextView error = text(tr(""), 12, Color.rgb(255, 128, 128)); append(root, error, 8);
                   LinearLayout actions = row(); Button later = button("Later", false), save = button(item.optBoolean("demo") ? "Finish test" : "Save payment  ✓", true);
                   LinearLayout.LayoutParams actionLp = new LinearLayout.LayoutParams(0, dp(48), 1); actionLp.setMargins(dp(3), dp(6), dp(3), 0); actions.addView(later, actionLp); actions.addView(save, new LinearLayout.LayoutParams(actionLp)); append(root, actions, 8);
-                  TextView note = text(tr("Pull the bubble and release to hide · kept in Review"), 11, MUTED); note.setGravity(Gravity.CENTER); append(root, note, 10);
                   WindowManager.LayoutParams lp = new WindowManager.LayoutParams(Math.min(dp(380), display().widthPixels - dp(24)), Math.min(dp(640), display().heightPixels - dp(80)), windowType(), WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL | WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH, PixelFormat.TRANSLUCENT);
                   lp.gravity = Gravity.CENTER; lp.softInputMode = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE;
                   scroll.setOnTouchListener((view, event) -> { if (event.getAction() == MotionEvent.ACTION_OUTSIDE) { collapsePanel(); return true; } return false; });
@@ -1250,7 +1250,7 @@ jobs:
               assert 'base/assets/public/locales/hi.json' in archive.namelist(), 'Hindi translations missing'
               assert 'base/assets/public/assets/quickspend-icon.png' in archive.namelist(), 'Web icon asset missing'
               html = archive.read('base/assets/public/index.html').decode()
-              assert 'nativePromise' in html and 'floating-capture-7' in html, 'Outdated floating-capture HTML bridge'
+              assert 'nativePromise' in html and 'floating-capture-8' in html, 'Outdated floating-capture HTML bridge'
               assert any(n.startswith('META-INF/') and n.upper().endswith(('.RSA', '.DSA', '.EC')) for n in archive.namelist()), 'Bundle has no signing certificate'
           meta = json.loads(Path('release-metadata.json').read_text())
           assert int(root.get(ns + 'versionCode')) == meta['versionCode'], 'Version code mismatch'
