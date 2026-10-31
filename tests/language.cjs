@@ -1,0 +1,11 @@
+const assert=require('assert'),fs=require('fs'),path=require('path');const{app,settle}=require('./app-inbox.cjs');
+(async()=>{
+ let a=app({seen:false});await settle();assert.ok(a.nodes.get('#language-choice').classList.contains('on'));assert.match(a.nodes.get('#language-choice').innerHTML,/हिन्दी/);assert.match(a.nodes.get('#language-choice').innerHTML,/English/);
+ await a.c.chooseLanguage('hi');assert.equal(a.eval('language'),'hi');assert.equal(a.nodes.get('html').attrs.lang,'hi');assert.match(a.nodes.get('#s-home').innerHTML,/बैलेंस/);assert.match(a.nodes.get('#onb').innerHTML,/आपका स्वागत/);assert.ok(!a.nodes.get('#language-choice').classList.contains('on'));
+ a.eval('endOb();openSheet(pending[0])');assert.match(a.nodes.get('#sheet').innerHTML,/बिना श्रेणी/);assert.match(a.nodes.get('#sheet').innerHTML,/सेव करें/);assert.equal(a.eval('cur.cat'),'Uncategorised');a.eval('save()');await settle();assert.equal(a.eval('tx[0].t'),'Expense');assert.equal(a.eval('tx[0].c'),'Uncategorised');assert.equal(a.eval('tx[0].a'),125);assert.equal(a.eval('tx[0].m'),'Shop');
+ const before=a.eval('JSON.stringify(tx)');await a.c.chooseLanguage('en');assert.match(a.nodes.get('#s-home').innerHTML,/Balance/);assert.equal(a.eval('JSON.stringify(tx)'),before);assert.equal(a.eval("localStorage.getItem('qs_language')"),'en');
+ a=app({savedLanguage:'hi'});await settle();assert.equal(a.eval('language'),'hi');assert.match(a.nodes.get('#s-review').innerHTML,/समीक्षा के लिए/);assert.equal(a.eval("L('Custom merchant')"),'Custom merchant');assert.equal(a.eval("accountLabel('Personal wallet')"),'Personal wallet');
+ a=app({languageFails:true});await settle();await a.c.chooseLanguage('hi');assert.equal(a.eval('language'),'en');assert.ok(a.nodes.get('#language-choice').classList.contains('on'));
+ const locale=JSON.parse(fs.readFileSync(path.join(__dirname,'../locales/hi.json')));const inline=a.eval('JSON.stringify(HI)');assert.deepEqual(JSON.parse(inline),locale,'Native and web dictionaries must match');
+ console.log('PASS: first-launch language picker, Hindi onboarding/screens/forms, canonical saved data, English switch, preference persistence, custom names preserved, native-save failure, identical web/native dictionary');
+})().catch(e=>{console.error(e);process.exit(1)});

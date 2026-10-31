@@ -41,6 +41,7 @@ jobs:
         run: |
           node tests/capture-regression.cjs
           node tests/app-inbox.cjs
+          node tests/language.cjs
       - uses: actions/setup-java@v5
         with:
           distribution: temurin
@@ -66,13 +67,15 @@ jobs:
             echo "::error::Missing icon. Upload the assets folder at the repository root along with index.html and .github."
             exit 1
           fi
-          mkdir -p www/assets && cp index.html www/
+          mkdir -p www/assets www/locales && cp index.html www/
+          cp locales/hi.json www/locales/
           cp assets/quickspend-icon.png www/assets/
           npm install
           npm install @capacitor/local-notifications@^6.0.0
           if [ ! -d android ]; then npx cap add android; fi
           D=android/app/src/main/java/com/quickspend/app
           mkdir -p $D
+          cp native/QsLanguage.java $D/
           cat > $D/SmsReceiver.java <<'EOF'
           package com.quickspend.app;
 
@@ -124,17 +127,17 @@ jobs:
             static void alert(Context c, String body) {
               NotificationManager nm = (NotificationManager) c.getSystemService(Context.NOTIFICATION_SERVICE);
               if (Build.VERSION.SDK_INT >= 26) {
-                nm.createNotificationChannel(new NotificationChannel(CH, "Payments", NotificationManager.IMPORTANCE_HIGH));
+                nm.createNotificationChannel(new NotificationChannel(CH, QsLanguage.tr(c,"Payments"), NotificationManager.IMPORTANCE_HIGH));
               }
               Intent li = c.getPackageManager().getLaunchIntentForPackage(c.getPackageName());
               if (li == null) return;
               PendingIntent pi = PendingIntent.getActivity(c, 0, li, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
               Matcher m = AMT.matcher(body);
-              String amt = m.find() ? "\u20b9" + m.group(1) : "Payment";
+              String amt = m.find() ? "\u20b9" + m.group(1) : QsLanguage.tr(c,"Payment");
               Notification n = new NotificationCompat.Builder(c, CH)
                 .setSmallIcon(R.drawable.ic_qs_notification)
                 .setContentTitle("Quick Spend: " + amt)
-                .setContentText("Tap to categorise this payment")
+                .setContentText(QsLanguage.tr(c,"Tap to categorise this payment"))
                 .setAutoCancel(true)
                 .setContentIntent(pi)
                 .setPriority(NotificationCompat.PRIORITY_HIGH)
@@ -176,7 +179,9 @@ jobs:
             public void status(PluginCall call) {
               JSObject r = new JSObject();
               r.put("sms", getPermissionState("sms") == PermissionState.GRANTED);
-              r.put("bridgeRevision", "floating-capture-6");
+              r.put("language", QsLanguage.get(getContext()));
+              r.put("languageChosen", QsLanguage.chosen(getContext()));
+              r.put("bridgeRevision", "floating-capture-7");
               try {
                 android.content.pm.PackageInfo info = getContext().getPackageManager().getPackageInfo(getContext().getPackageName(), 0);
                 r.put("nativeBuild", Build.VERSION.SDK_INT >= 28 ? info.getLongVersionCode() : info.versionCode);
@@ -301,6 +306,18 @@ jobs:
             }
 
             @PluginMethod
+            public void setLanguage(PluginCall call) {
+              String language = call.getString("language", "");
+              getActivity().runOnUiThread(() -> {
+                try {
+                  QsLanguage.set(getContext(), language);
+                  if (FloatingCaptureService.enabled(getContext())) FloatingCaptureService.activityVisible(getContext(), true);
+                  JSObject result = new JSObject(); result.put("language", language); call.resolve(result);
+                } catch (Exception e) { call.reject("Could not change language. Please try again.", e); }
+              });
+            }
+
+            @PluginMethod
             public void overlayStatus(PluginCall call) {
               JSObject result = new JSObject();
               result.put("allowed", Settings.canDrawOverlays(getContext()));
@@ -363,7 +380,7 @@ jobs:
               super.onCreate(savedInstanceState);
               if (android.os.Build.VERSION.SDK_INT >= 26) {
                 android.app.NotificationManager nm = (android.app.NotificationManager) getSystemService(NOTIFICATION_SERVICE);
-                nm.createNotificationChannel(new android.app.NotificationChannel(SmsReceiver.CH, "Payments", android.app.NotificationManager.IMPORTANCE_HIGH));
+                nm.createNotificationChannel(new android.app.NotificationChannel(SmsReceiver.CH, QsLanguage.tr(this,"Payments"), android.app.NotificationManager.IMPORTANCE_HIGH));
               }
               grab(getIntent());
             }
@@ -711,7 +728,7 @@ jobs:
                   }
                   try {
                       NotificationManager manager = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
-                      if (Build.VERSION.SDK_INT >= 26) manager.createNotificationChannel(new NotificationChannel(CHANNEL, "Floating quick capture", NotificationManager.IMPORTANCE_LOW));
+                      if (Build.VERSION.SDK_INT >= 26) manager.createNotificationChannel(new NotificationChannel(CHANNEL, tr("Floating quick capture"), NotificationManager.IMPORTANCE_LOW));
                       Intent launch = getPackageManager().getLaunchIntentForPackage(getPackageName());
                       PendingIntent open = PendingIntent.getActivity(this, 61202, launch, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
                       PendingIntent pause = PendingIntent.getService(this, 61203, new Intent(this, FloatingCaptureService.class).setAction(PAUSE), PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
@@ -721,7 +738,7 @@ jobs:
                           .setContentText("A floating shortcut appears for bank payments. Tap Pause to stop.")
                           .setContentIntent(open).setOngoing(true).setSilent(true)
                           .setPriority(NotificationCompat.PRIORITY_LOW)
-                          .addAction(android.R.drawable.ic_media_pause, "Pause", pause).build();
+                          .addAction(android.R.drawable.ic_media_pause, tr("Pause"), pause).build();
                       if (Build.VERSION.SDK_INT >= 34) startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE);
                       else startForeground(NOTIFICATION_ID, notification);
                       lastError = "";
@@ -767,6 +784,7 @@ jobs:
                       hideAll();
                   }
               }
+              private String tr(String value) { return QsLanguage.tr(this,value); }
               private int dp(float value) { return Math.round(value * getResources().getDisplayMetrics().density); }
               private GradientDrawable shape(int color, int radius) {
                   GradientDrawable result = new GradientDrawable(); result.setColor(color); result.setCornerRadius(dp(radius)); return result;
@@ -779,7 +797,7 @@ jobs:
               private void showBubble(int count) {
                   if (bubble != null) {
                       ((TextView) bubble.findViewWithTag("count")).setText(count > 99 ? "99+" : String.valueOf(count));
-                      bubble.setContentDescription("QuickSpend: " + count + " payments to categorise. Tap to open, drag to move, pull and release to hide.");
+                      bubble.setContentDescription(tr("QuickSpend: " + count + " payments to categorise. Tap to open, drag to move, pull and release to hide."));
                       return;
                   }
                   FrameLayout container = new FrameLayout(this);
@@ -787,7 +805,7 @@ jobs:
                   FrameLayout.LayoutParams circle = new FrameLayout.LayoutParams(dp(52), dp(52), Gravity.CENTER); container.addView(icon, circle);
                   TextView badge = text(count > 99 ? "99+" : String.valueOf(count), 10, Color.WHITE); badge.setTag("count"); badge.setGravity(Gravity.CENTER); badge.setBackground(shape(Color.rgb(219, 72, 85), 12));
                   container.addView(badge, new FrameLayout.LayoutParams(dp(23), dp(20), Gravity.TOP | Gravity.END));
-                  container.setElevation(dp(8)); container.setContentDescription("QuickSpend: " + count + " payments to categorise. Tap to open, drag to move, pull and release to hide.");
+                  container.setElevation(dp(8)); container.setContentDescription(tr("QuickSpend: " + count + " payments to categorise. Tap to open, drag to move, pull and release to hide."));
                   SharedPreferences p = getSharedPreferences(PREFS, 0); DisplayMetrics screen = display();
                   bubbleParams = new WindowManager.LayoutParams(dp(60), dp(60), windowType(), WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE | WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL, PixelFormat.TRANSLUCENT);
                   bubbleParams.gravity = Gravity.TOP | Gravity.START;
@@ -828,7 +846,7 @@ jobs:
                                   }
                                   else animateBubble(bubbleParams.x+dp(30) < screen.widthPixels/2 ? dp(6) : screen.widthPixels-dp(66), bubbleParams.y, false);
                               }
-                              else if (event.getEventTime() - downTime > 650) { hiddenUntilNextPayment = true; hideAll(); Toast.makeText(FloatingCaptureService.this, "Shortcut hidden. Payments stay in Review.", Toast.LENGTH_SHORT).show(); }
+                              else if (event.getEventTime() - downTime > 650) { hiddenUntilNextPayment = true; hideAll(); Toast.makeText(FloatingCaptureService.this, tr("Shortcut hidden. Payments stay in Review."), Toast.LENGTH_SHORT).show(); }
                               else view.performClick();
                               return true;
                           }
@@ -867,7 +885,7 @@ jobs:
                       canvas.drawLine(anchorX, anchorY, endX, endY, paint);
                       paint.setAlpha(200); canvas.drawCircle(anchorX, anchorY, dp(5), paint);
                       paint.setAlpha(255); paint.setTextSize(dp(12)); paint.setTextAlign(Paint.Align.CENTER);
-                      canvas.drawText(distance >= dp(64) ? "Release to hide · kept in Review" : "Pull further to hide", getWidth()/2f, getHeight()-dp(38), paint);
+                      canvas.drawText(tr(distance >= dp(64) ? "Release to hide · kept in Review" : "Pull further to hide"), getWidth()/2f, getHeight()-dp(38), paint);
                   }
               }
               private void showTether(float x, float y) {
@@ -902,7 +920,7 @@ jobs:
                       @Override public void onAnimationEnd(Animator animation) {
                           if (cancelled || bubble != target) return;
                           bubbleMotion=null;
-                          if (dismiss) { dismissingBubble=false; hideBubble(); updateOverlay(); Toast.makeText(FloatingCaptureService.this, "Hidden · payment kept in Review", Toast.LENGTH_SHORT).show(); }
+                          if (dismiss) { dismissingBubble=false; hideBubble(); updateOverlay(); Toast.makeText(FloatingCaptureService.this, tr("Hidden · payment kept in Review"), Toast.LENGTH_SHORT).show(); }
                           else getSharedPreferences(PREFS, 0).edit().putInt("x", bubbleParams.x).putInt("y", bubbleParams.y).apply();
                       }
                   });
@@ -910,7 +928,7 @@ jobs:
               }
               private LinearLayout row() { LinearLayout r = new LinearLayout(this); r.setOrientation(LinearLayout.HORIZONTAL); r.setGravity(Gravity.CENTER_VERTICAL); return r; }
               private Button button(String label, boolean selected) {
-                  Button b = new Button(this); b.setText(label); b.setTextSize(12); b.setAllCaps(false); b.setTextColor(selected ? Color.BLACK : FG); b.setBackground(chipBackground(selected)); b.setMinWidth(0); b.setMinimumWidth(0); b.setMinHeight(dp(44)); b.setMinimumHeight(dp(44)); b.setPadding(dp(8), dp(6), dp(8), dp(6)); return b;
+                  Button b = new Button(this); b.setText(tr(label)); b.setTextSize("hi".equals(QsLanguage.get(this)) ? 11 : 12); b.setAllCaps(false); b.setMaxLines(2); b.setGravity(Gravity.CENTER); b.setTextColor(selected ? Color.BLACK : FG); b.setBackground(chipBackground(selected)); b.setMinWidth(0); b.setMinimumWidth(0); b.setMinHeight(dp(44)); b.setMinimumHeight(dp(44)); b.setPadding(dp(8), dp(6), dp(8), dp(6)); return b;
               }
               private void append(LinearLayout root, View child, int top) {
                   LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2); lp.topMargin = dp(top); root.addView(child, lp);
@@ -922,19 +940,19 @@ jobs:
                   GradientDrawable card = new GradientDrawable(GradientDrawable.Orientation.TL_BR, new int[]{Color.rgb(35,53,45), Color.rgb(17,25,24)}); card.setCornerRadius(dp(36)); card.setStroke(dp(1), Color.rgb(67,88,72)); scroll.setBackground(card); scroll.setElevation(dp(16));
                   LinearLayout root = new LinearLayout(this); root.setOrientation(LinearLayout.VERTICAL); root.setPadding(dp(20), dp(18), dp(20), dp(24)); scroll.addView(root);
                   LinearLayout brand = row(); ImageView logo = new ImageView(this); logo.setImageResource(R.drawable.qs_brand_icon); logo.setBackground(shape(BG, 10)); logo.setClipToOutline(true); brand.addView(logo, new LinearLayout.LayoutParams(dp(28), dp(28)));
-                  TextView brandName = text("QUICKSPEND", 11, ACCENT); brandName.setLetterSpacing(.16f); LinearLayout.LayoutParams brandLp = new LinearLayout.LayoutParams(-2,-2); brandLp.leftMargin=dp(10); brand.addView(brandName, brandLp); append(root, brand, 0);
-                  LinearLayout header = row(); TextView title = text(item.optBoolean("demo") ? "Try quick capture" : "Quick capture", 19, FG); title.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
-                  header.addView(title, new LinearLayout.LayoutParams(0, -2, 1)); Button fullscreen = button("⛶", false); fullscreen.setContentDescription("Expand quick capture to fullscreen"); header.addView(fullscreen, new LinearLayout.LayoutParams(dp(44),dp(44))); Button close = button("×", false); close.setContentDescription("Close quick capture"); header.addView(close, new LinearLayout.LayoutParams(dp(44), dp(44))); append(root, header, 10);
-                  TextView merchant = text(item.optBoolean("demo") ? "Preview only · no expense will be saved" : details.merchant, 13, MUTED); append(root, merchant, 8);
+                  TextView brandName = text(tr("QUICKSPEND"), 11, ACCENT); brandName.setLetterSpacing(.16f); LinearLayout.LayoutParams brandLp = new LinearLayout.LayoutParams(-2,-2); brandLp.leftMargin=dp(10); brand.addView(brandName, brandLp); append(root, brand, 0);
+                  LinearLayout header = row(); TextView title = text(tr(item.optBoolean("demo") ? "Try quick capture" : "Quick capture"), 19, FG); title.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+                  header.addView(title, new LinearLayout.LayoutParams(0, -2, 1)); Button fullscreen = button("⛶", false); fullscreen.setContentDescription(tr("Expand quick capture to fullscreen")); header.addView(fullscreen, new LinearLayout.LayoutParams(dp(44),dp(44))); Button close = button("×", false); close.setContentDescription(tr("Close quick capture")); header.addView(close, new LinearLayout.LayoutParams(dp(44), dp(44))); append(root, header, 10);
+                  TextView merchant = text(item.optBoolean("demo") ? tr("Preview only · no expense will be saved") : details.merchant, 13, MUTED); append(root, merchant, 8);
                   LinearLayout amountRow = row(); amountRow.setGravity(Gravity.CENTER); amountRow.setPadding(dp(12),dp(22),dp(12),dp(22)); amountRow.setBackground(shape(Color.rgb(22,35,28),30));
                   TextView amountLabel = text("₹" + details.amountText(), 40, ACCENT); amountLabel.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
-                  EditText amount = new EditText(this); amount.setText(details.amountText()); amount.setTextSize(28); amount.setTextColor(FG); amount.setSingleLine(true); amount.setSelectAllOnFocus(true); amount.setInputType(InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_DECIMAL); amount.setVisibility(View.GONE); amount.setContentDescription("Payment amount in rupees");
+                  EditText amount = new EditText(this); amount.setText(details.amountText()); amount.setTextSize(28); amount.setTextColor(FG); amount.setSingleLine(true); amount.setSelectAllOnFocus(true); amount.setInputType(InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_DECIMAL); amount.setVisibility(View.GONE); amount.setContentDescription(tr("Payment amount in rupees"));
                   amountRow.addView(amountLabel); amountRow.addView(amount, new LinearLayout.LayoutParams(0, -2, 1));
-                  Button pencil = button("✎", false); pencil.setContentDescription("Edit amount"); LinearLayout.LayoutParams penLp = new LinearLayout.LayoutParams(dp(44), dp(44)); penLp.leftMargin = dp(8); amountRow.addView(pencil, penLp); append(root, amountRow, 16);
+                  Button pencil = button("✎", false); pencil.setContentDescription(tr("Edit amount")); LinearLayout.LayoutParams penLp = new LinearLayout.LayoutParams(dp(44), dp(44)); penLp.leftMargin = dp(8); amountRow.addView(pencil, penLp); append(root, amountRow, 16);
                   final String[] type = {details.type}, category = {"Uncategorised"};
                   LinearLayout types = row(); append(root, types, 16);
-                  EditText person = new EditText(this); person.setTextColor(FG); person.setTextSize(14); person.setSingleLine(true); person.setHintTextColor(MUTED); person.setHint("Person's name"); person.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_CAP_WORDS); person.setContentDescription("Person's name for money lent or borrowed"); append(root, person, 10); person.setVisibility(View.GONE);
-                  TextView categoryTitle = text("Save now. Sort it whenever.", 13, MUTED); append(root, categoryTitle, 12);
+                  EditText person = new EditText(this); person.setTextColor(FG); person.setTextSize(14); person.setSingleLine(true); person.setHintTextColor(MUTED); person.setHint(tr("Person's name")); person.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_CAP_WORDS); person.setContentDescription(tr("Person's name for money lent or borrowed")); append(root, person, 10); person.setVisibility(View.GONE);
+                  TextView categoryTitle = text(tr("Save now. Sort it whenever."), 13, MUTED); append(root, categoryTitle, 12);
                   LinearLayout categories = new LinearLayout(this); categories.setOrientation(LinearLayout.VERTICAL); append(root, categories, 8);
                   Runnable drawCategories = () -> {
                       categories.removeAllViews();
@@ -942,7 +960,7 @@ jobs:
                       for (int i = 0; i < labels.length; i += 3) {
                           LinearLayout categoryRow = row();
                           for (int j = i; j < Math.min(i + 3, labels.length); j++) {
-                              String label = labels[j]; Button chip = button(categoryIcon(label) + "  " + label, label.equals(category[0])); chip.setTag(label); chip.setContentDescription(label + " category");
+                              String label = labels[j]; Button chip = button(categoryIcon(label) + "  " + tr(label), label.equals(category[0])); chip.setTag(label); chip.setContentDescription(tr(label) + ("hi".equals(QsLanguage.get(this)) ? " श्रेणी" : " category"));
                               LinearLayout.LayoutParams chipLp = new LinearLayout.LayoutParams(0, dp(52), 1); chipLp.setMargins(dp(3), dp(3), dp(3), dp(3)); categoryRow.addView(chip, chipLp);
                               chip.setOnClickListener(view -> { category[0] = label; for (int a = 0; a < categories.getChildCount(); a++) { LinearLayout r = (LinearLayout) categories.getChildAt(a); for (int b = 0; b < r.getChildCount(); b++) { Button other = (Button) r.getChildAt(b); boolean active = label.equals(other.getTag()); other.setTextColor(active ? Color.BLACK : FG); other.setBackground(chipBackground(active)); } } });
                           }
@@ -950,19 +968,19 @@ jobs:
                       }
                   };
                   for (String label : new String[]{"Expense", "Income", "Lent", "Borrowed"}) {
-                      Button choice = button(label, label.equals(type[0])); choice.setTextSize(11);
+                      Button choice = button(label, label.equals(type[0])); choice.setTag(label); choice.setTextSize(11);
                       LinearLayout.LayoutParams choiceLp = new LinearLayout.LayoutParams(0, dp(44), 1); choiceLp.setMargins(dp(2), 0, dp(2), 0); types.addView(choice, choiceLp);
                       choice.setOnClickListener(view -> {
                           type[0] = label; category[0] = "Uncategorised";
-                          for (int i = 0; i < types.getChildCount(); i++) { Button other = (Button) types.getChildAt(i); boolean active = other.getText().toString().equals(label); other.setTextColor(active ? Color.BLACK : FG); other.setBackground(chipBackground(active)); }
-                          boolean debt = label.equals("Lent") || label.equals("Borrowed"); person.setVisibility(debt ? View.VISIBLE : View.GONE); person.setHint(label.equals("Lent") ? "Who did you lend to?" : "Who did you borrow from?"); drawCategories.run();
+                          for (int i = 0; i < types.getChildCount(); i++) { Button other = (Button) types.getChildAt(i); boolean active = label.equals(other.getTag()); other.setTextColor(active ? Color.BLACK : FG); other.setBackground(chipBackground(active)); }
+                          boolean debt = label.equals("Lent") || label.equals("Borrowed"); person.setVisibility(debt ? View.VISIBLE : View.GONE); person.setHint(tr(label.equals("Lent") ? "Who did you lend to?" : "Who did you borrow from?")); drawCategories.run();
                       });
                   }
                   drawCategories.run();
-                  TextView error = text("", 12, Color.rgb(255, 128, 128)); append(root, error, 8);
+                  TextView error = text(tr(""), 12, Color.rgb(255, 128, 128)); append(root, error, 8);
                   LinearLayout actions = row(); Button later = button("Later", false), save = button(item.optBoolean("demo") ? "Finish test" : "Save payment  ✓", true);
                   LinearLayout.LayoutParams actionLp = new LinearLayout.LayoutParams(0, dp(48), 1); actionLp.setMargins(dp(3), dp(6), dp(3), 0); actions.addView(later, actionLp); actions.addView(save, new LinearLayout.LayoutParams(actionLp)); append(root, actions, 8);
-                  TextView note = text("Pull the bubble and release to hide · kept in Review", 11, MUTED); note.setGravity(Gravity.CENTER); append(root, note, 10);
+                  TextView note = text(tr("Pull the bubble and release to hide · kept in Review"), 11, MUTED); note.setGravity(Gravity.CENTER); append(root, note, 10);
                   WindowManager.LayoutParams lp = new WindowManager.LayoutParams(Math.min(dp(380), display().widthPixels - dp(24)), Math.min(dp(640), display().heightPixels - dp(80)), windowType(), WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL | WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH, PixelFormat.TRANSLUCENT);
                   lp.gravity = Gravity.CENTER; lp.softInputMode = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE;
                   scroll.setOnTouchListener((view, event) -> { if (event.getAction() == MotionEvent.ACTION_OUTSIDE) { collapsePanel(); return true; } return false; });
@@ -971,30 +989,30 @@ jobs:
                       expanded[0]=!expanded[0];
                       lp.width=expanded[0] ? display().widthPixels-dp(16) : Math.min(dp(380), display().widthPixels-dp(24));
                       lp.height=expanded[0] ? display().heightPixels-dp(48) : Math.min(dp(640), display().heightPixels-dp(80));
-                      scroll.setFillViewport(expanded[0]); fullscreen.setText(expanded[0] ? "⊡" : "⛶"); fullscreen.setContentDescription(expanded[0] ? "Restore compact popup" : "Expand quick capture to fullscreen");
-                      try { windows.updateViewLayout(scroll,lp); } catch (RuntimeException e) { error.setText("Could not resize popup."); }
+                      scroll.setFillViewport(expanded[0]); fullscreen.setText(expanded[0] ? "⊡" : "⛶"); fullscreen.setContentDescription(tr(expanded[0] ? "Restore compact popup" : "Expand quick capture to fullscreen"));
+                      try { windows.updateViewLayout(scroll,lp); } catch (RuntimeException e) { error.setText(tr("Could not resize popup.")); }
                       if (motionEnabled()) { scroll.setAlpha(.65f); scroll.animate().alpha(1).setDuration(160).start(); }
                   });
                   close.setOnClickListener(view -> collapsePanel());
                   pencil.setOnClickListener(view -> { amountLabel.setVisibility(View.GONE); amount.setVisibility(View.VISIBLE); amount.requestFocus(); amount.post(() -> ((InputMethodManager) getSystemService(INPUT_METHOD_SERVICE)).showSoftInput(amount, InputMethodManager.SHOW_IMPLICIT)); });
-                  later.setOnClickListener(view -> { if (item.optBoolean("demo")) { try { SmsStore.complete(this, SmsStore.key(item), null); } catch (RuntimeException e) { error.setText("Could not dismiss preview. Try again."); return; } } hiddenUntilNextPayment = true; hideAll(); Toast.makeText(this, "Saved for later in Review", Toast.LENGTH_SHORT).show(); });
+                  later.setOnClickListener(view -> { if (item.optBoolean("demo")) { try { SmsStore.complete(this, SmsStore.key(item), null); } catch (RuntimeException e) { error.setText(tr("Could not dismiss preview. Try again.")); return; } } hiddenUntilNextPayment = true; hideAll(); Toast.makeText(this, tr("Saved for later in Review"), Toast.LENGTH_SHORT).show(); });
                   save.setOnClickListener(view -> {
                       if (item.optBoolean("demo")) {
-                          try { SmsStore.complete(this, SmsStore.key(item), null); hidePanel(); updateOverlay(); Toast.makeText(this, "Preview complete. No expense was added.", Toast.LENGTH_SHORT).show(); } catch (RuntimeException e) { error.setText("Could not finish preview. Try again."); } return;
+                          try { SmsStore.complete(this, SmsStore.key(item), null); hidePanel(); updateOverlay(); Toast.makeText(this, tr("Preview complete. No expense was added."), Toast.LENGTH_SHORT).show(); } catch (RuntimeException e) { error.setText(tr("Could not finish preview. Try again.")); } return;
                       }
                       double value;
                       try { value = Double.parseDouble(amount.getText().toString().trim()); } catch (NumberFormatException e) { value = 0; }
-                      if (value <= 0 || Double.isNaN(value) || Double.isInfinite(value)) { error.setText("Enter an amount greater than zero."); return; }
+                      if (value <= 0 || Double.isNaN(value) || Double.isInfinite(value)) { error.setText(tr("Enter an amount greater than zero.")); return; }
                       if (category[0] == null) category[0] = "Uncategorised";
                       String who = person.getText().toString().trim();
-                      if ((type[0].equals("Lent") || type[0].equals("Borrowed")) && who.isEmpty()) { error.setText("Add the person's name."); person.requestFocus(); return; }
+                      if ((type[0].equals("Lent") || type[0].equals("Borrowed")) && who.isEmpty()) { error.setText(tr("Add the person's name.")); person.requestFocus(); return; }
                       save.setEnabled(false);
                       try {
                           JSONObject entry = new JSONObject().put("t", type[0]).put("a", value).put("c", category[0]).put("m", details.merchant).put("who", who).put("ts", item.optLong("ts", System.currentTimeMillis())).put("settled", 0).put("smsFrom", item.optString("from")).put("smsBody", item.optString("body"));
                           boolean saved = SmsStore.complete(this, SmsStore.key(item), entry);
                           hidePanel(); updateOverlay();
-                          Toast.makeText(this, saved ? "Saved to QuickSpend" : "This payment was already handled", Toast.LENGTH_SHORT).show();
-                      } catch (Exception e) { save.setEnabled(true); error.setText("Could not save. Check free storage and try again."); }
+                          Toast.makeText(this, tr(saved ? "Saved to QuickSpend" : "This payment was already handled"), Toast.LENGTH_SHORT).show();
+                      } catch (Exception e) { save.setEnabled(true); error.setText(tr("Could not save. Check free storage and try again.")); }
                   });
                   windows.addView(scroll, lp); panel = scroll;
                   if (motionEnabled()) { scroll.setAlpha(0); scroll.setScaleX(.94f); scroll.setScaleY(.94f); scroll.setTranslationY(dp(22)); scroll.animate().alpha(1).scaleX(1).scaleY(1).translationY(0).setDuration(240).setInterpolator(new OvershootInterpolator(.6f)).start(); }
@@ -1224,14 +1242,15 @@ jobs:
           assert service.find('property') is not None, 'Foreground service use-case explanation missing'
           with ZipFile('android/app/build/outputs/bundle/release/app-release.aab') as archive:
               dex = [archive.read(n) for n in archive.namelist() if n.startswith('base/dex/') and n.endswith('.dex')]
-              for cls in (b'Lcom/quickspend/app/SmsBridgePlugin;', b'Lcom/quickspend/app/SmsReceiver;', b'Lcom/quickspend/app/FloatingCaptureService;', b'Lcom/quickspend/app/SmsStore;', b'Lcom/quickspend/app/PaymentParser;', b'Lcom/quickspend/app/CaptureMotion;'):
+              for cls in (b'Lcom/quickspend/app/SmsBridgePlugin;', b'Lcom/quickspend/app/SmsReceiver;', b'Lcom/quickspend/app/FloatingCaptureService;', b'Lcom/quickspend/app/SmsStore;', b'Lcom/quickspend/app/PaymentParser;', b'Lcom/quickspend/app/CaptureMotion;', b'Lcom/quickspend/app/QsLanguage;'):
                   assert any(cls in data for data in dex), 'Bundle missing native class: ' + cls.decode()
-              for method in ('overlayStatus', 'openOverlaySettings', 'setOverlayEnabled', 'testOverlay'):
+              for method in ('overlayStatus', 'openOverlaySettings', 'setOverlayEnabled', 'testOverlay', 'setLanguage'):
                   assert any(method.encode() + bytes([0]) in data for data in dex), 'Native floating method missing: ' + method
               assert any(n.endswith('/qs_brand_icon.png') for n in archive.namelist()), 'Native brand icon missing'
+              assert 'base/assets/public/locales/hi.json' in archive.namelist(), 'Hindi translations missing'
               assert 'base/assets/public/assets/quickspend-icon.png' in archive.namelist(), 'Web icon asset missing'
               html = archive.read('base/assets/public/index.html').decode()
-              assert 'nativePromise' in html and 'floating-capture-6' in html, 'Outdated floating-capture HTML bridge'
+              assert 'nativePromise' in html and 'floating-capture-7' in html, 'Outdated floating-capture HTML bridge'
               assert any(n.startswith('META-INF/') and n.upper().endswith(('.RSA', '.DSA', '.EC')) for n in archive.namelist()), 'Bundle has no signing certificate'
           meta = json.loads(Path('release-metadata.json').read_text())
           assert int(root.get(ns + 'versionCode')) == meta['versionCode'], 'Version code mismatch'

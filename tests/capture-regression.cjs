@@ -5,7 +5,7 @@ function setup(snapshot,{storageWorks=true}={}){
  const seen=new Set(),nativePending=JSON.parse(JSON.stringify(snapshot.items||[])),nativeSaved=JSON.parse(JSON.stringify(snapshot.entries||[]));let acknowledged=[],completed=[],writes=0;
  const nodes={};const node=()=>({classList:{add(){},contains:()=>false}});
  const P={drain:async()=>({items:nativePending,entries:nativeSaved}),acknowledgeSaved:async({keys})=>{acknowledged.push(...keys);for(let i=nativeSaved.length-1;i>=0;i--)if(keys.includes(nativeSaved[i].nativeKey))nativeSaved.splice(i,1)},completeSms:async({sourceKey})=>{completed.push(sourceKey);for(let i=nativePending.length-1;i>=0;i--)if(nativePending[i].sourceKey===sourceKey)nativePending.splice(i,1)}};
- const context={SB:()=>P,tx:[],pending:[],speed:[],smsSeen:[],cur:{},sid:200,accts:[{n:'Main account',i:'🏦'}],CATS:{Expense:[['','Food'],['','Travel']],Income:[['','Salary']],Lent:[['','Friend']],Borrowed:[['','Family']]},parseSms:(from,body)=>/invalid/.test(body)?null:{m:'Shop',a:100,kind:'Expense',acc:'HDFC 1234'},fd:()=> '31 Oct',closeSheet(){},render(){},persist:()=>{writes++;return storageWorks},$:s=>nodes[s]||(nodes[s]=node()),openSheet(){},console:{warn(){}}};
+ const context={language:'en',L:x=>x,SB:()=>P,tx:[],pending:[],speed:[],smsSeen:[],cur:{},sid:200,accts:[{n:'Main account',i:'🏦'}],CATS:{Expense:[['','Food'],['','Travel']],Income:[['','Salary']],Lent:[['','Friend']],Borrowed:[['','Family']]},parseSms:(from,body)=>/invalid/.test(body)?null:{m:'Shop',a:100,kind:'Expense',acc:'HDFC 1234'},fd:()=> '31 Oct',closeSheet(){},render(){},persist:()=>{writes++;return storageWorks},$:s=>nodes[s]||(nodes[s]=node()),openSheet(){},console:{warn(){}}};
  vm.createContext(context);vm.runInContext(importer,context);
  return {c:context,nativeSaved,nativePending,acknowledged,completed,get writes(){return writes}};
 }
@@ -28,7 +28,7 @@ function setup(snapshot,{storageWorks=true}={}){
  // Exercise the actual Review Save function, including local-storage failure.
  const saveCode=html.slice(html.indexOf('function save(){'),html.indexOf('const MN='));
  function saving(works=true){
-  const c={cur:{id:1,m:'Shop',a:125,type:'Expense',cat:'Food',sourceKey:'review-save',acc:'Main'},tx:[],pending:[{id:1,sourceKey:'review-save'}],recur:[],memory:{},sid:200,CATS:{Expense:[['','Food']]},SB:()=>({completeSms:async()=>{c.completed++}}),persist:()=>works,closeSheet:()=>{c.closed++},render(){},paint(){},fd:()=> '31 Oct',alert:()=>{c.alerted++},completed:0,closed:0,alerted:0};
+  const c={L:x=>x,cur:{id:1,m:'Shop',a:125,type:'Expense',cat:'Food',sourceKey:'review-save',acc:'Main'},tx:[],pending:[{id:1,sourceKey:'review-save'}],recur:[],memory:{},sid:200,CATS:{Expense:[['','Food']]},SB:()=>({completeSms:async()=>{c.completed++}}),persist:()=>works,closeSheet:()=>{c.closed++},render(){},paint(){},fd:()=> '31 Oct',alert:()=>{c.alerted++},completed:0,closed:0,alerted:0};
   vm.createContext(c);vm.runInContext(saveCode,c);return c;
  }
  let s=saving();s.save();assert.equal(s.tx.length,1);assert.equal(s.pending.length,0);assert.equal(s.completed,1);s.save();assert.equal(s.tx.length,1,'Repeated Save must not duplicate');

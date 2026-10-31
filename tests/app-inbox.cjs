@@ -1,11 +1,12 @@
 const fs=require('fs'),vm=require('vm'),assert=require('assert'),path=require('path');
 const html=fs.readFileSync(path.join(__dirname,'../index.html'),'utf8');
 const script=html.split('<script>')[1].split('</script>')[0];
-function app({seen=true,broken=false}={}){
- const nodes=new Map(),listeners={};function node(s){if(!nodes.has(s)){const classes=new Set();nodes.set(s,{innerHTML:'',textContent:'',style:{},classList:{add:x=>classes.add(x),remove:x=>classes.delete(x),contains:x=>classes.has(x),toggle(){}},setAttribute(){},addEventListener(){},dataset:{}})}return nodes.get(s)}
- const data=new Map(seen?[['qs_ob','1'],['qs_p2','1']]:[]);let completed=[],acks=[];
+function app({seen=true,broken=false,savedLanguage=null,languageFails=false}={}){
+ const nodes=new Map(),listeners={};function node(s){if(!nodes.has(s)){const classes=new Set();nodes.set(s,{innerHTML:'',textContent:'',style:{},classList:{add:x=>classes.add(x),remove:x=>classes.delete(x),contains:x=>classes.has(x),toggle(){}},attrs:{},setAttribute(k,v){this.attrs[k]=v},addEventListener(){},dataset:{}})}return nodes.get(s)}
+ const data=new Map(seen?[['qs_ob','1'],['qs_p2','1']]:[]);if(savedLanguage)data.set('qs_language',savedLanguage);let completed=[],acks=[];
  const inbox={items:[{sourceKey:'payment',from:'HDFC',body:'Rs.125 debited at Shop on today',amount:125,ts:Date.now()}],entries:[]};
  const c={Date,Number,console:{warn(){}},Set,Map,JSON,document:{documentElement:node('html'),querySelector:node,querySelectorAll:()=>[],addEventListener(){},hidden:false},localStorage:{getItem:k=>data.get(k)||null,setItem:(k,v)=>data.set(k,v),removeItem:k=>data.delete(k)},window:{Capacitor:{isNativePlatform:()=>true,nativePromise:async(p,m,o)=>{
+  if(m==='setLanguage'){if(languageFails)throw Error('Language unavailable');return {language:o.language}}
   if(m==='inboxSnapshot'){if(broken)throw Error('Inbox unavailable');return{payload:JSON.stringify(inbox)}}
   if(m==='drain'){if(broken)throw Error('Inbox unavailable');return inbox}
   if(m==='completeSms'){completed.push(o.sourceKey);inbox.items=inbox.items.filter(x=>x.sourceKey!==o.sourceKey);return{}}
@@ -16,7 +17,8 @@ function app({seen=true,broken=false}={}){
  return{c,nodes,inbox,listeners,completed,acks,eval:s=>vm.runInContext(s,c)};
 }
 const settle=()=>new Promise(r=>setImmediate(r));
-(async()=>{
+module.exports={app,settle};
+if(require.main===module)(async()=>{
  let a=app({seen:false});await settle();assert.equal(a.eval('pending.length'),1);a.eval('endOb()');assert.equal(a.eval('pending.length'),1,'Completing onboarding must preserve incoming payment');
  a.eval('openSheet(pending[0])');assert.equal(a.eval('cur.cat'),'Uncategorised');a.eval('save()');await settle();assert.equal(a.eval('tx.length'),1);assert.equal(a.eval('tx[0].c'),'Uncategorised');assert.equal(a.eval('pending.length'),0);assert.match(a.nodes.get('#s-review').innerHTML,/Saved · needs a category/);
  a.eval("openSavedReview(tx[0].id);cur.cat='Food';save()");assert.equal(a.eval('tx.length'),1);assert.equal(a.eval('tx[0].c'),'Food');assert.equal(a.eval('tx[0].sourceKey'),'payment');
