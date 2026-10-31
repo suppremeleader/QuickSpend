@@ -43,6 +43,7 @@ jobs:
           node tests/app-inbox.cjs
           node tests/language.cjs
           node tests/budgets.cjs
+          node tests/account-layout.cjs
       - uses: actions/setup-java@v5
         with:
           distribution: temurin
@@ -76,7 +77,11 @@ jobs:
           if [ ! -d android ]; then npx cap add android; fi
           D=android/app/src/main/java/com/quickspend/app
           mkdir -p $D
-          cp native/QsLanguage.java $D/
+          cp native/QsLanguage.java native/AccountBridgePlugin.java $D/
+          if [ -s config/google-services.json ]; then
+            mkdir -p android/app/src/main/assets/cloud
+            cp config/google-services.json android/app/src/main/assets/cloud/
+          fi
           cat > $D/SmsReceiver.java <<'EOF'
           package com.quickspend.app;
 
@@ -182,7 +187,7 @@ jobs:
               r.put("sms", getPermissionState("sms") == PermissionState.GRANTED);
               r.put("language", QsLanguage.get(getContext()));
               r.put("languageChosen", QsLanguage.chosen(getContext()));
-              r.put("bridgeRevision", "floating-capture-8");
+              r.put("bridgeRevision", "floating-capture-9");
               try {
                 android.content.pm.PackageInfo info = getContext().getPackageManager().getPackageInfo(getContext().getPackageName(), 0);
                 r.put("nativeBuild", Build.VERSION.SDK_INT >= 28 ? info.getLongVersionCode() : info.versionCode);
@@ -378,6 +383,7 @@ jobs:
             @Override
             public void onCreate(Bundle savedInstanceState) {
               registerPlugin(SmsBridgePlugin.class);
+              registerPlugin(AccountBridgePlugin.class);
               super.onCreate(savedInstanceState);
               if (android.os.Build.VERSION.SDK_INT >= 26) {
                 android.app.NotificationManager nm = (android.app.NotificationManager) getSystemService(NOTIFICATION_SERVICE);
@@ -606,6 +612,8 @@ jobs:
           import android.animation.AnimatorListenerAdapter;
           import android.view.animation.OvershootInterpolator;
           import android.view.animation.AccelerateInterpolator;
+          import androidx.core.view.ViewCompat;
+          import androidx.core.view.WindowInsetsCompat;
           import android.graphics.Canvas;
           import android.graphics.Paint;
           import android.graphics.drawable.RippleDrawable;
@@ -667,7 +675,7 @@ jobs:
               private final Handler main = new Handler(Looper.getMainLooper());
               private WindowManager windows;
               private View bubble;
-              private ScrollView panel;
+              private LinearLayout panel;
               private TetherView tether;
               private ValueAnimator bubbleMotion;
               private boolean dismissingBubble;
@@ -937,9 +945,11 @@ jobs:
               private void showPanel(JSONObject item) {
                   hideBubble(); hidePanel(); panelKey = SmsStore.key(item);
                   PaymentParser details = PaymentParser.parse(item.optString("from"), item.optString("body"));
+                  LinearLayout frame = new LinearLayout(this); frame.setOrientation(LinearLayout.VERTICAL);
                   ScrollView scroll = new ScrollView(this); scroll.setFillViewport(false); scroll.setVerticalScrollBarEnabled(false); scroll.setClipToOutline(true);
-                  GradientDrawable card = new GradientDrawable(GradientDrawable.Orientation.TL_BR, new int[]{Color.rgb(32,32,42), Color.rgb(18,18,23)}); card.setCornerRadius(dp(36)); card.setStroke(dp(1), Color.rgb(49,49,60)); scroll.setBackground(card); scroll.setElevation(dp(16));
-                  LinearLayout root = new LinearLayout(this); root.setOrientation(LinearLayout.VERTICAL); root.setPadding(dp(20), dp(18), dp(20), dp(24)); scroll.addView(root);
+                  GradientDrawable card = new GradientDrawable(GradientDrawable.Orientation.TL_BR, new int[]{Color.rgb(32,32,42), Color.rgb(18,18,23)}); card.setCornerRadius(dp(36)); card.setStroke(dp(1), Color.rgb(49,49,60)); frame.setBackground(card); frame.setClipToOutline(true); frame.setElevation(dp(16));
+                  frame.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));
+                  LinearLayout root = new LinearLayout(this); root.setOrientation(LinearLayout.VERTICAL); root.setPadding(dp(20), dp(18), dp(20), dp(8)); scroll.addView(root);
                   LinearLayout brand = row(); ImageView logo = new ImageView(this); logo.setImageResource(R.drawable.qs_brand_icon); logo.setBackground(shape(BG, 10)); logo.setClipToOutline(true); brand.addView(logo, new LinearLayout.LayoutParams(dp(28), dp(28)));
                   TextView brandName = text(tr("QUICKSPEND"), 11, ACCENT); brandName.setLetterSpacing(.16f); LinearLayout.LayoutParams brandLp = new LinearLayout.LayoutParams(-2,-2); brandLp.leftMargin=dp(10); brand.addView(brandName, brandLp); append(root, brand, 0);
                   LinearLayout header = row(); TextView title = text(tr(item.optBoolean("demo") ? "Try quick capture" : "Quick capture"), 19, FG); title.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
@@ -978,49 +988,59 @@ jobs:
                       });
                   }
                   drawCategories.run();
-                  TextView error = text(tr(""), 12, Color.rgb(255, 128, 128)); append(root, error, 8);
+                  LinearLayout footer = new LinearLayout(this); footer.setOrientation(LinearLayout.VERTICAL); footer.setPadding(dp(20),dp(8),dp(20),dp(20)); footer.setBackground(shape(BG,0)); frame.addView(footer,new LinearLayout.LayoutParams(-1,-2));
+                  TextView error = text(tr(""), 12, Color.rgb(255, 128, 128)); error.setVisibility(View.GONE); append(footer, error, 0);
                   LinearLayout actions = row(); Button later = button("Later", false), save = button(item.optBoolean("demo") ? "Finish test" : "Save payment  ✓", true);
-                  LinearLayout.LayoutParams actionLp = new LinearLayout.LayoutParams(0, dp(48), 1); actionLp.setMargins(dp(3), dp(6), dp(3), 0); actions.addView(later, actionLp); actions.addView(save, new LinearLayout.LayoutParams(actionLp)); append(root, actions, 8);
+                  LinearLayout.LayoutParams actionLp = new LinearLayout.LayoutParams(0, dp(48), 1); actionLp.setMargins(dp(3), dp(6), dp(3), 0); actions.addView(later, actionLp); actions.addView(save, new LinearLayout.LayoutParams(actionLp)); append(footer, actions, 0);
                   WindowManager.LayoutParams lp = new WindowManager.LayoutParams(Math.min(dp(380), display().widthPixels - dp(24)), Math.min(dp(640), display().heightPixels - dp(80)), windowType(), WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL | WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH, PixelFormat.TRANSLUCENT);
                   lp.gravity = Gravity.CENTER; lp.softInputMode = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE;
-                  scroll.setOnTouchListener((view, event) -> { if (event.getAction() == MotionEvent.ACTION_OUTSIDE) { collapsePanel(); return true; } return false; });
+                  frame.setOnTouchListener((view, event) -> { if (event.getAction() == MotionEvent.ACTION_OUTSIDE) { collapsePanel(); return true; } return false; });
                   final boolean[] expanded = {false};
+                  final int[] desiredHeight={Math.min(dp(640),display().heightPixels-dp(80))};
+                  ViewCompat.setOnApplyWindowInsetsListener(frame,(view,insets)->{
+                      int top=insets.getInsets(WindowInsetsCompat.Type.systemBars()).top;
+                      int bottom=Math.max(insets.getInsets(WindowInsetsCompat.Type.systemBars()).bottom,insets.getInsets(WindowInsetsCompat.Type.ime()).bottom);
+                      int available=Math.max(dp(100),display().heightPixels-top-bottom-dp(32));
+                      int height=Math.min(desiredHeight[0],available);
+                      if (lp.height!=height) { lp.height=height; if (panel==frame) try { windows.updateViewLayout(frame,lp); } catch (RuntimeException ignored) { } }
+                      return insets;
+                  });
                   fullscreen.setOnClickListener(view -> {
                       expanded[0]=!expanded[0];
                       lp.width=expanded[0] ? display().widthPixels-dp(16) : Math.min(dp(380), display().widthPixels-dp(24));
-                      lp.height=expanded[0] ? display().heightPixels-dp(48) : Math.min(dp(640), display().heightPixels-dp(80));
+                      desiredHeight[0]=expanded[0] ? display().heightPixels-dp(48) : Math.min(dp(640),display().heightPixels-dp(80)); lp.height=desiredHeight[0];
                       scroll.setFillViewport(expanded[0]); fullscreen.setText(expanded[0] ? "⊡" : "⛶"); fullscreen.setContentDescription(tr(expanded[0] ? "Restore compact popup" : "Expand quick capture to fullscreen"));
-                      try { windows.updateViewLayout(scroll,lp); } catch (RuntimeException e) { error.setText(tr("Could not resize popup.")); }
-                      if (motionEnabled()) { scroll.setAlpha(.65f); scroll.animate().alpha(1).setDuration(160).start(); }
+                      try { windows.updateViewLayout(frame,lp); ViewCompat.requestApplyInsets(frame); } catch (RuntimeException e) { error.setVisibility(View.VISIBLE); error.setText(tr("Could not resize popup.")); }
+                      if (motionEnabled()) { frame.setAlpha(.65f); frame.animate().alpha(1).setDuration(160).start(); }
                   });
                   close.setOnClickListener(view -> collapsePanel());
                   pencil.setOnClickListener(view -> { amountLabel.setVisibility(View.GONE); amount.setVisibility(View.VISIBLE); amount.requestFocus(); amount.post(() -> ((InputMethodManager) getSystemService(INPUT_METHOD_SERVICE)).showSoftInput(amount, InputMethodManager.SHOW_IMPLICIT)); });
-                  later.setOnClickListener(view -> { if (item.optBoolean("demo")) { try { SmsStore.complete(this, SmsStore.key(item), null); } catch (RuntimeException e) { error.setText(tr("Could not dismiss preview. Try again.")); return; } } hiddenUntilNextPayment = true; hideAll(); Toast.makeText(this, tr("Saved for later in Review"), Toast.LENGTH_SHORT).show(); });
+                  later.setOnClickListener(view -> { if (item.optBoolean("demo")) { try { SmsStore.complete(this, SmsStore.key(item), null); } catch (RuntimeException e) { error.setVisibility(View.VISIBLE); error.setText(tr("Could not dismiss preview. Try again.")); return; } } hiddenUntilNextPayment = true; hideAll(); Toast.makeText(this, tr("Saved for later in Review"), Toast.LENGTH_SHORT).show(); });
                   save.setOnClickListener(view -> {
                       if (item.optBoolean("demo")) {
-                          try { SmsStore.complete(this, SmsStore.key(item), null); hidePanel(); updateOverlay(); Toast.makeText(this, tr("Preview complete. No expense was added."), Toast.LENGTH_SHORT).show(); } catch (RuntimeException e) { error.setText(tr("Could not finish preview. Try again.")); } return;
+                          try { SmsStore.complete(this, SmsStore.key(item), null); hidePanel(); updateOverlay(); Toast.makeText(this, tr("Preview complete. No expense was added."), Toast.LENGTH_SHORT).show(); } catch (RuntimeException e) { error.setVisibility(View.VISIBLE); error.setText(tr("Could not finish preview. Try again.")); } return;
                       }
                       double value;
                       try { value = Double.parseDouble(amount.getText().toString().trim()); } catch (NumberFormatException e) { value = 0; }
-                      if (value <= 0 || Double.isNaN(value) || Double.isInfinite(value)) { error.setText(tr("Enter an amount greater than zero.")); return; }
+                      if (value <= 0 || Double.isNaN(value) || Double.isInfinite(value)) { error.setVisibility(View.VISIBLE); error.setText(tr("Enter an amount greater than zero.")); return; }
                       if (category[0] == null) category[0] = "Uncategorised";
                       String who = person.getText().toString().trim();
-                      if ((type[0].equals("Lent") || type[0].equals("Borrowed")) && who.isEmpty()) { error.setText(tr("Add the person's name.")); person.requestFocus(); return; }
+                      if ((type[0].equals("Lent") || type[0].equals("Borrowed")) && who.isEmpty()) { error.setVisibility(View.VISIBLE); error.setText(tr("Add the person's name.")); person.requestFocus(); return; }
                       save.setEnabled(false);
                       try {
                           JSONObject entry = new JSONObject().put("t", type[0]).put("a", value).put("c", category[0]).put("m", details.merchant).put("who", who).put("ts", item.optLong("ts", System.currentTimeMillis())).put("settled", 0).put("smsFrom", item.optString("from")).put("smsBody", item.optString("body"));
                           boolean saved = SmsStore.complete(this, SmsStore.key(item), entry);
                           hidePanel(); updateOverlay();
                           Toast.makeText(this, tr(saved ? "Saved to QuickSpend" : "This payment was already handled"), Toast.LENGTH_SHORT).show();
-                      } catch (Exception e) { save.setEnabled(true); error.setText(tr("Could not save. Check free storage and try again.")); }
+                      } catch (Exception e) { save.setEnabled(true); error.setVisibility(View.VISIBLE); error.setText(tr("Could not save. Check free storage and try again.")); }
                   });
-                  windows.addView(scroll, lp); panel = scroll;
-                  if (motionEnabled()) { scroll.setAlpha(0); scroll.setScaleX(.94f); scroll.setScaleY(.94f); scroll.setTranslationY(dp(22)); scroll.animate().alpha(1).scaleX(1).scaleY(1).translationY(0).setDuration(240).setInterpolator(new OvershootInterpolator(.6f)).start(); }
+                  windows.addView(frame, lp); panel = frame; ViewCompat.requestApplyInsets(frame);
+                  if (motionEnabled()) { frame.setAlpha(0); frame.setScaleX(.94f); frame.setScaleY(.94f); frame.setTranslationY(dp(22)); frame.animate().alpha(1).scaleX(1).scaleY(1).translationY(0).setDuration(240).setInterpolator(new OvershootInterpolator(.6f)).start(); }
               }
               private void collapsePanel() {
                   if (panel == null) return;
                   if (!motionEnabled()) { hidePanel(); updateOverlay(); return; }
-                  final ScrollView closing=panel;
+                  final LinearLayout closing=panel;
                   closing.animate().cancel(); closing.setEnabled(false);
                   closing.animate().alpha(0).scaleX(.94f).scaleY(.94f).translationY(dp(18)).setDuration(150).withEndAction(() -> { if (panel == closing) { hidePanel(); updateOverlay(); } }).start();
               }
@@ -1162,6 +1182,7 @@ jobs:
           s, count = re.subn(r'\bversionName\s+[\x27\x22][^\x27\x22]*[\x27\x22]', 'versionName "' + version + '"', s)
           assert count == 1, 'Cannot locate versionName'
           s += '\napply from: "ci-release-signing.gradle"\n'
+          s += "\ndependencies {\n    implementation platform('com.google.firebase:firebase-bom:35.1.0')\n    implementation 'com.google.firebase:firebase-auth'\n    implementation 'com.google.firebase:firebase-firestore'\n    implementation 'androidx.credentials:credentials:1.3.0'\n    implementation 'androidx.credentials:credentials-play-services-auth:1.3.0'\n    implementation 'com.google.android.libraries.identity.googleid:googleid:1.1.1'\n}\n"
           app_gradle.write_text(s)
           Path('android/app/ci-release-signing.gradle').write_text('''android {
               signingConfigs {
@@ -1242,7 +1263,7 @@ jobs:
           assert service.find('property') is not None, 'Foreground service use-case explanation missing'
           with ZipFile('android/app/build/outputs/bundle/release/app-release.aab') as archive:
               dex = [archive.read(n) for n in archive.namelist() if n.startswith('base/dex/') and n.endswith('.dex')]
-              for cls in (b'Lcom/quickspend/app/SmsBridgePlugin;', b'Lcom/quickspend/app/SmsReceiver;', b'Lcom/quickspend/app/FloatingCaptureService;', b'Lcom/quickspend/app/SmsStore;', b'Lcom/quickspend/app/PaymentParser;', b'Lcom/quickspend/app/CaptureMotion;', b'Lcom/quickspend/app/QsLanguage;'):
+              for cls in (b'Lcom/quickspend/app/SmsBridgePlugin;', b'Lcom/quickspend/app/SmsReceiver;', b'Lcom/quickspend/app/FloatingCaptureService;', b'Lcom/quickspend/app/SmsStore;', b'Lcom/quickspend/app/PaymentParser;', b'Lcom/quickspend/app/CaptureMotion;', b'Lcom/quickspend/app/QsLanguage;', b'Lcom/quickspend/app/AccountBridgePlugin;'):
                   assert any(cls in data for data in dex), 'Bundle missing native class: ' + cls.decode()
               for method in ('overlayStatus', 'openOverlaySettings', 'setOverlayEnabled', 'testOverlay', 'setLanguage'):
                   assert any(method.encode() + bytes([0]) in data for data in dex), 'Native floating method missing: ' + method
@@ -1250,7 +1271,7 @@ jobs:
               assert 'base/assets/public/locales/hi.json' in archive.namelist(), 'Hindi translations missing'
               assert 'base/assets/public/assets/quickspend-icon.png' in archive.namelist(), 'Web icon asset missing'
               html = archive.read('base/assets/public/index.html').decode()
-              assert 'nativePromise' in html and 'floating-capture-8' in html, 'Outdated floating-capture HTML bridge'
+              assert 'nativePromise' in html and 'floating-capture-9' in html, 'Outdated floating-capture HTML bridge'
               assert any(n.startswith('META-INF/') and n.upper().endswith(('.RSA', '.DSA', '.EC')) for n in archive.namelist()), 'Bundle has no signing certificate'
           meta = json.loads(Path('release-metadata.json').read_text())
           assert int(root.get(ns + 'versionCode')) == meta['versionCode'], 'Version code mismatch'
