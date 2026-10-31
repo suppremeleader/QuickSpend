@@ -338,13 +338,13 @@ jobs:
             }
 
             @Override
-            protected void onResume() {
+            public void onResume() {
               super.onResume();
               FloatingCaptureService.activityVisible(this, true);
             }
 
             @Override
-            protected void onPause() {
+            public void onPause() {
               FloatingCaptureService.activityVisible(this, false);
               super.onPause();
             }
