@@ -1,12 +1,39 @@
-name: Build APK
+name: Quick Spend Play Console Bundle
 on:
   push:
+    branches: [main]
   workflow_dispatch:
+    inputs:
+      version_code:
+        description: 'Optional version code; must exceed every version already uploaded to Play'
+        required: false
+        type: string
+      version_name:
+        description: 'Optional version name; defaults to package.json version'
+        required: false
+        type: string
+permissions:
+  contents: read
 jobs:
   build:
     runs-on: ubuntu-24.04
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
+      - name: Check upload signing secrets
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          for secret in ANDROID_KEYSTORE_BASE64 ANDROID_KEYSTORE_PASSWORD ANDROID_KEY_ALIAS ANDROID_KEY_PASSWORD; do
+            if [ -z "${!secret}" ]; then
+              echo "::error::Missing GitHub Actions secret: $secret. Follow PLAY_CONSOLE_SETUP.md."
+              exit 1
+            fi
+          done
       - uses: actions/setup-node@v4
         with:
           node-version: 20
@@ -14,41 +41,74 @@ jobs:
         with:
           distribution: temurin
           java-version: 17
-      - name: Build
+      - uses: android-actions/setup-android@v3
+      - name: Install Android 36 SDK
+        run: sdkmanager "platforms;android-36" "build-tools;36.0.0"
+      - name: Prepare native SMS bridge and Play release configuration
+        env:
+          INPUT_VERSION_CODE: ${{ inputs.version_code }}
+          INPUT_VERSION_NAME: ${{ inputs.version_name }}
         run: |
+          set -euo pipefail
           mkdir -p www && cp index.html www/
-          cat > capacitor.config.json <<'EOF'
-          {"appId":"com.autosave.quickspend","appName":"Quick Spend","webDir":"www","backgroundColor":"#000000"}
-          EOF
           npm install
           npm install @capacitor/local-notifications@^6.0.0
-          npx cap add android
-          D=android/app/src/main/java/com/autosave/quickspend
+          if [ ! -d android ]; then npx cap add android; fi
+          D=android/app/src/main/java/com/quickspend/app
           mkdir -p $D
           cat > $D/SmsReceiver.java <<'EOF'
-          package com.autosave.quickspend;
+          package com.quickspend.app;
 
           import android.app.Notification;
           import android.app.NotificationChannel;
           import android.app.NotificationManager;
           import android.app.PendingIntent;
+          import android.content.BroadcastReceiver;
           import android.content.Context;
           import android.content.Intent;
           import android.content.SharedPreferences;
           import android.os.Build;
+          import android.provider.Telephony;
+          import android.telephony.SmsMessage;
           import androidx.core.app.NotificationCompat;
           import org.json.JSONArray;
           import org.json.JSONObject;
           import java.util.regex.Matcher;
           import java.util.regex.Pattern;
 
-          public class SmsReceiver {
+          public class SmsReceiver extends BroadcastReceiver {
             static final String PREFS = "qs_sms";
             static final String KEY = "queue";
             static final String CH = "qs_pay";
             static final Pattern KW = Pattern.compile("(?i)(debited|credited|spent|paid|received|withdrawn|sent rs|sent inr|purchase|txn|transaction|transferred|refund)");
             static final Pattern BAD = Pattern.compile("(?i)(otp|one.?time|verification code|below minimum|min(imum)? (bal|limit)|payment due|amount due|due on|will be debited|request(ed)? (money|from)|collect request|fail|declin|unsuccess|not processed|offer|apply now|congratulations|pre-?approved)");
             static final Pattern AMT = Pattern.compile("(?i)(?:rs\\.?|inr|\\u20b9)\\s*([0-9][0-9,]*(?:\\.[0-9]{1,2})?)");
+
+            @Override
+            public void onReceive(Context c, Intent i) {
+              if (!Telephony.Sms.Intents.SMS_RECEIVED_ACTION.equals(i.getAction())) return;
+              SmsMessage[] ms = Telephony.Sms.Intents.getMessagesFromIntent(i);
+              if (ms == null || ms.length == 0) return;
+              StringBuilder b = new StringBuilder();
+              for (SmsMessage m : ms) b.append(m.getMessageBody());
+              String body = b.toString();
+              String from = ms[0].getOriginatingAddress();
+              long ts = ms[0].getTimestampMillis();
+              if (!KW.matcher(body).find() || BAD.matcher(body).find() || !AMT.matcher(body).find()) return;
+              try {
+                SharedPreferences p = c.getSharedPreferences(PREFS, 0);
+                JSONArray q = new JSONArray(p.getString(KEY, "[]"));
+                JSONObject o = new JSONObject();
+                o.put("from", from);
+                o.put("body", body);
+                o.put("ts", ts);
+                q.put(o);
+                p.edit().putString(KEY, q.toString()).apply();
+              } catch (Exception e) {
+                return;
+              }
+              try { alert(c, body); } catch (Exception e) { }
+            }
 
             static void push(Context c, String from, String body, long ts) {
               try {
@@ -85,58 +145,16 @@ jobs:
             }
           }
           EOF
-          cat > $D/NotifListener.java <<'EOF'
-          package com.autosave.quickspend;
-
-          import android.app.Notification;
-          import android.content.SharedPreferences;
-          import android.os.Bundle;
-          import android.os.Parcelable;
-          import android.service.notification.NotificationListenerService;
-          import android.service.notification.StatusBarNotification;
-
-          public class NotifListener extends NotificationListenerService {
-            @Override
-            public void onNotificationPosted(StatusBarNotification sbn) {
-              try {
-                if (sbn == null || getPackageName().equals(sbn.getPackageName())) return;
-                Notification n = sbn.getNotification();
-                if (n == null || n.extras == null) return;
-                if ((n.flags & Notification.FLAG_GROUP_SUMMARY) != 0) return;
-                Bundle e = n.extras;
-                String title = str(e.getCharSequence(Notification.EXTRA_TITLE));
-                String body = "";
-                Parcelable[] ms = e.getParcelableArray(Notification.EXTRA_MESSAGES);
-                if (ms != null && ms.length > 0 && ms[ms.length - 1] instanceof Bundle) {
-                  body = str(((Bundle) ms[ms.length - 1]).getCharSequence("text"));
-                }
-                if (body.isEmpty()) body = str(e.getCharSequence(Notification.EXTRA_BIG_TEXT));
-                if (body.isEmpty()) body = str(e.getCharSequence(Notification.EXTRA_TEXT));
-                if (body.isEmpty()) return;
-                if (!SmsReceiver.KW.matcher(body).find() || SmsReceiver.BAD.matcher(body).find() || !SmsReceiver.AMT.matcher(body).find()) return;
-                SharedPreferences p = getSharedPreferences(SmsReceiver.PREFS, 0);
-                String sig = Integer.toString(body.hashCode());
-                long now = System.currentTimeMillis();
-                if (sig.equals(p.getString("lastSig", "")) && now - p.getLong("lastTs", 0) < 120000) return;
-                p.edit().putString("lastSig", sig).putLong("lastTs", now).apply();
-                SmsReceiver.push(this, title, body, sbn.getPostTime());
-                SmsReceiver.alert(this, body);
-              } catch (Exception ex) { }
-            }
-
-            private static String str(CharSequence c) {
-              return c == null ? "" : c.toString();
-            }
-          }
-          EOF
           cat > $D/SmsBridgePlugin.java <<'EOF'
-          package com.autosave.quickspend;
+          package com.quickspend.app;
 
-          import android.content.ComponentName;
-          import android.content.Intent;
           import android.content.SharedPreferences;
-          import android.os.Build;
+          import android.content.Intent;
+          import android.net.Uri;
           import android.provider.Settings;
+          import android.os.Build;
+          import android.app.NotificationManager;
+          import android.app.NotificationChannel;
           import androidx.core.app.NotificationManagerCompat;
           import com.getcapacitor.JSArray;
           import com.getcapacitor.JSObject;
@@ -151,6 +169,7 @@ jobs:
           @CapacitorPlugin(
             name = "SmsBridge",
             permissions = {
+              @Permission(strings = {"android.permission.RECEIVE_SMS"}, alias = "sms"),
               @Permission(strings = {"android.permission.POST_NOTIFICATIONS"}, alias = "notif")
             }
           )
@@ -158,40 +177,65 @@ jobs:
             @PluginMethod
             public void status(PluginCall call) {
               JSObject r = new JSObject();
-              boolean on = NotificationManagerCompat.getEnabledListenerPackages(getContext()).contains(getContext().getPackageName());
-              r.put("listener", on);
-              r.put("notif", Build.VERSION.SDK_INT < 33 || getPermissionState("notif") == PermissionState.GRANTED);
+              r.put("sms", getPermissionState("sms") == PermissionState.GRANTED);
+              boolean allowed = NotificationManagerCompat.from(getContext()).areNotificationsEnabled();
+              NotificationManager nm = (NotificationManager) getContext().getSystemService(android.content.Context.NOTIFICATION_SERVICE);
+              if (Build.VERSION.SDK_INT >= 26) {
+                NotificationChannel channel = nm.getNotificationChannel(SmsReceiver.CH);
+                allowed = allowed && (channel == null || channel.getImportance() != NotificationManager.IMPORTANCE_NONE);
+              }
+              r.put("notif", allowed && (Build.VERSION.SDK_INT < 33 || getPermissionState("notif") == PermissionState.GRANTED));
               call.resolve(r);
             }
 
             @PluginMethod
+            public void request(PluginCall call) {
+              if (Build.VERSION.SDK_INT >= 33) requestAllPermissions(call, "done");
+              else requestPermissionForAlias("sms", call, "done");
+            }
+
+            @PluginMethod
+            public void requestSms(PluginCall call) {
+              requestPermissionForAlias("sms", call, "done");
+            }
+
+            @PluginMethod
             public void requestNotif(PluginCall call) {
-              requestPermissionForAlias("notif", call, "done");
+              if (Build.VERSION.SDK_INT >= 33) requestPermissionForAlias("notif", call, "done");
+              else status(call);
+            }
+
+            @PluginMethod
+            public void openNotificationSettings(PluginCall call) {
+              Intent intent;
+              if (Build.VERSION.SDK_INT >= 26) {
+                intent = new Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS);
+                intent.putExtra(Settings.EXTRA_APP_PACKAGE, getContext().getPackageName());
+              } else {
+                intent = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                    Uri.parse("package:" + getContext().getPackageName()));
+              }
+              try {
+                getActivity().startActivity(intent);
+                call.resolve();
+              } catch (Exception e) { call.reject("Could not open notification settings", e); }
+            }
+
+            @PluginMethod
+            public void testNotification(PluginCall call) {
+              if (!NotificationManagerCompat.from(getContext()).areNotificationsEnabled()) {
+                call.reject("Notifications are disabled. Enable them in notification settings.");
+                return;
+              }
+              try {
+                SmsReceiver.alert(getContext(), "Test notification");
+                call.resolve();
+              } catch (Exception e) { call.reject("Could not post test notification", e); }
             }
 
             @PermissionCallback
             private void done(PluginCall call) {
               status(call);
-            }
-
-            @PluginMethod
-            public void openListener(PluginCall call) {
-              try {
-                Intent i;
-                if (Build.VERSION.SDK_INT >= 30) {
-                  i = new Intent(Settings.ACTION_NOTIFICATION_LISTENER_DETAIL_SETTINGS);
-                  i.putExtra(Settings.EXTRA_NOTIFICATION_LISTENER_COMPONENT_NAME, new ComponentName(getContext(), NotifListener.class).flattenToString());
-                } else {
-                  i = new Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS);
-                }
-                i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-                getContext().startActivity(i);
-              } catch (Exception e) {
-                Intent j = new Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS);
-                j.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-                getContext().startActivity(j);
-              }
-              call.resolve();
             }
 
             @PluginMethod
@@ -210,7 +254,7 @@ jobs:
           }
           EOF
           cat > $D/MainActivity.java <<'EOF'
-          package com.autosave.quickspend;
+          package com.quickspend.app;
 
           import android.content.Intent;
           import android.os.Bundle;
@@ -221,6 +265,10 @@ jobs:
             public void onCreate(Bundle savedInstanceState) {
               registerPlugin(SmsBridgePlugin.class);
               super.onCreate(savedInstanceState);
+              if (android.os.Build.VERSION.SDK_INT >= 26) {
+                android.app.NotificationManager nm = (android.app.NotificationManager) getSystemService(NOTIFICATION_SERVICE);
+                nm.createNotificationChannel(new android.app.NotificationChannel(SmsReceiver.CH, "Payments", android.app.NotificationManager.IMPORTANCE_HIGH));
+              }
               grab(getIntent());
             }
 
@@ -243,23 +291,147 @@ jobs:
           python3 - <<'PY'
           p = 'android/app/src/main/AndroidManifest.xml'
           s = open(p).read()
-          perms = '<uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>\n'
-          svc = '<service android:name=".NotifListener" android:label="Quick Spend" android:exported="true" android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE"><intent-filter><action android:name="android.service.notification.NotificationListenerService"/></intent-filter></service>\n'
+          perms = '<uses-permission android:name="android.permission.RECEIVE_SMS"/>\n<uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>\n'
+          rec = '<receiver android:name=".SmsReceiver" android:exported="true" android:permission="android.permission.BROADCAST_SMS"><intent-filter android:priority="999"><action android:name="android.provider.Telephony.SMS_RECEIVED"/></intent-filter></receiver>\n'
           share = '<intent-filter><action android:name="android.intent.action.SEND"/><category android:name="android.intent.category.DEFAULT"/><data android:mimeType="text/plain"/></intent-filter>\n'
-          if 'NotifListener' not in s:
-              s = s.replace('<application', perms + '<application', 1).replace('</activity>', share + '</activity>', 1).replace('</application>', svc + '</application>', 1)
+          for permission in ('RECEIVE_SMS', 'POST_NOTIFICATIONS'):
+              full = 'android.permission.' + permission
+              if full not in s:
+                  s = s.replace('<application', '<uses-permission android:name="' + full + '"/>\n<application', 1)
+          if 'SmsReceiver' not in s:
+              s = s.replace('</application>', rec + '</application>', 1)
+          if 'android.intent.action.SEND' not in s:
+              s = s.replace('</activity>', share + '</activity>', 1)
           open(p, 'w').write(s)
           PY
-          grep -q NotifListener android/app/src/main/AndroidManifest.xml
           grep -q POST_NOTIFICATIONS android/app/src/main/AndroidManifest.xml
-          grep -q SmsBridgePlugin $D/MainActivity.java
+          grep -q RECEIVE_SMS android/app/src/main/AndroidManifest.xml
+          grep -q SmsBridgePlugin android/app/src/main/java/com/quickspend/app/MainActivity.java
           echo "MANIFEST CHECK OK"
           npx cap sync android
-          cd android && chmod +x gradlew && ./gradlew assembleDebug
-          APK=app/build/outputs/apk/debug/app-debug.apk
-          AAPT=$(ls -d $ANDROID_HOME/build-tools/*/aapt 2>/dev/null | tail -1)
-          if [ -n "$AAPT" ]; then $AAPT dump permissions $APK || true; fi
+          python3 - <<'PY_CHECK'
+          from pathlib import Path
+          source = Path('android/app/src/main/java/com/quickspend/app')
+          assert (source / 'SmsBridgePlugin.java').is_file(), 'SmsBridgePlugin source is missing'
+          assert (source / 'SmsReceiver.java').is_file(), 'SmsReceiver source is missing'
+          assert 'registerPlugin(SmsBridgePlugin.class)' in (source / 'MainActivity.java').read_text(), 'Activity plugin registration is missing'
+          PY_CHECK
+          python3 - <<'PY_CONFIG'
+          from pathlib import Path
+          import os, re, json
+          variables = Path('android/variables.gradle')
+          s = variables.read_text()
+          for name in ('compileSdkVersion', 'targetSdkVersion'):
+              s, count = re.subn(r'\b' + name + r'\s*=\s*\d+', name + ' = 36', s)
+              assert count == 1, 'Cannot locate ' + name
+          variables.write_text(s)
+          root_gradle = Path('android/build.gradle')
+          s, count = re.subn(r'com.android.tools.build:gradle:[^\x27\x22\s]+', 'com.android.tools.build:gradle:8.11.1', root_gradle.read_text())
+          assert count == 1, 'Cannot locate Android Gradle plugin version'
+          root_gradle.write_text(s)
+          wrapper = Path('android/gradle/wrapper/gradle-wrapper.properties')
+          s, count = re.subn(r'gradle-[0-9.]+-(?:all|bin)\.zip', 'gradle-8.13-bin.zip', wrapper.read_text())
+          assert count == 1, 'Cannot locate Gradle distribution'
+          # The generated template does not contain a distribution checksum. Fail rather
+          # than silently retain a checksum for an older Gradle distribution.
+          assert 'distributionSha256Sum=' not in s, 'Update Gradle checksum before changing the wrapper'
+          wrapper.write_text(s)
+          raw = os.environ.get('INPUT_VERSION_CODE', '').strip()
+          code = int(raw) if raw else 1000 + int(os.environ['GITHUB_RUN_NUMBER'])
+          assert 0 < code <= 2100000000, 'versionCode must be a positive Android version code'
+          version = os.environ.get('INPUT_VERSION_NAME', '').strip() or json.loads(Path('package.json').read_text())['version']
+          assert re.fullmatch(r'[A-Za-z0-9._+-]{1,80}', version), 'Invalid version name'
+          app_gradle = Path('android/app/build.gradle')
+          s = app_gradle.read_text()
+          s, count = re.subn(r'\bversionCode\s+\d+', 'versionCode ' + str(code), s)
+          assert count == 1, 'Cannot locate versionCode'
+          s, count = re.subn(r'\bversionName\s+[\x27\x22][^\x27\x22]*[\x27\x22]', 'versionName "' + version + '"', s)
+          assert count == 1, 'Cannot locate versionName'
+          s += '\napply from: "ci-release-signing.gradle"\n'
+          app_gradle.write_text(s)
+          Path('android/app/ci-release-signing.gradle').write_text('''android {
+              signingConfigs {
+                  playUpload {
+                      storeFile file(System.getenv("ANDROID_KEYSTORE_FILE"))
+                      storePassword System.getenv("ANDROID_KEYSTORE_PASSWORD")
+                      keyAlias System.getenv("ANDROID_KEY_ALIAS")
+                      keyPassword System.getenv("ANDROID_KEY_PASSWORD")
+                  }
+              }
+              buildTypes {
+                  release {
+                      signingConfig signingConfigs.playUpload
+                      debuggable false
+                      minifyEnabled false
+                  }
+              }
+          }
+          ''')
+          Path('release-metadata.json').write_text(json.dumps({
+              'applicationId': 'com.quickspend.app', 'versionCode': code,
+              'versionName': version, 'targetSdk': 36,
+              'commit': os.environ.get('GITHUB_SHA'), 'runId': os.environ.get('GITHUB_RUN_ID')
+          }, indent=2))
+          print('Configured release version', version, 'code', code, 'target API 36')
+          PY_CONFIG
+      - name: Build signed release bundle
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          ANDROID_KEYSTORE_FILE: ${{ runner.temp }}/quickspend-upload.jks
+        run: |
+          set -euo pipefail
+          umask 077
+          trap 'rm -f "$ANDROID_KEYSTORE_FILE"' EXIT
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$ANDROID_KEYSTORE_FILE"
+          keytool -list -keystore "$ANDROID_KEYSTORE_FILE" -storepass:env ANDROID_KEYSTORE_PASSWORD -alias "$ANDROID_KEY_ALIAS" > /dev/null
+          chmod +x android/gradlew
+          cd android
+          ./gradlew --no-daemon :app:bundleRelease
+      - name: Verify signed App Bundle and packaged native code
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          AAB=android/app/build/outputs/bundle/release/app-release.aab
+          test -s "$AAB"
+          jarsigner -verify "$AAB" > dist/signature-verification.txt
+          grep -q 'jar verified' dist/signature-verification.txt
+          keytool -printcert -jarfile "$AAB" > dist/upload-certificate.txt
+          curl --fail --location --retry 3 --output "$RUNNER_TEMP/bundletool.jar" https://github.com/google/bundletool/releases/download/1.18.3/bundletool-all-1.18.3.jar
+          java -jar "$RUNNER_TEMP/bundletool.jar" validate --bundle="$AAB"
+          java -jar "$RUNNER_TEMP/bundletool.jar" dump manifest --bundle="$AAB" --module=base > dist/AndroidManifest.xml
+          python3 - <<'PY_VERIFY'
+          from pathlib import Path
+          from zipfile import ZipFile
+          import xml.etree.ElementTree as ET
+          import json
+          ns = '{http://schemas.android.com/apk/res/android}'
+          root = ET.parse('dist/AndroidManifest.xml').getroot()
+          assert root.get('package') == 'com.quickspend.app', 'Unexpected application ID'
+          assert int(root.find('uses-sdk').get(ns + 'targetSdkVersion')) >= 36, 'Target API must be at least 36'
+          assert root.find('application').get(ns + 'debuggable', 'false') == 'false', 'Release is debuggable'
+          permissions = {p.get(ns + 'name') for p in root.findall('uses-permission')}
+          assert {'android.permission.POST_NOTIFICATIONS', 'android.permission.RECEIVE_SMS'} <= permissions, 'Native permissions missing'
+          with ZipFile('android/app/build/outputs/bundle/release/app-release.aab') as archive:
+              dex = [archive.read(n) for n in archive.namelist() if n.startswith('base/dex/') and n.endswith('.dex')]
+              for cls in (b'Lcom/quickspend/app/SmsBridgePlugin;', b'Lcom/quickspend/app/SmsReceiver;'):
+                  assert any(cls in data for data in dex), 'Bundle missing native class: ' + cls.decode()
+              html = archive.read('base/assets/public/index.html').decode()
+              assert 'nativePromise' in html, 'Outdated HTML bridge'
+              assert any(n.startswith('META-INF/') and n.upper().endswith(('.RSA', '.DSA', '.EC')) for n in archive.namelist()), 'Bundle has no signing certificate'
+          meta = json.loads(Path('release-metadata.json').read_text())
+          assert int(root.get(ns + 'versionCode')) == meta['versionCode'], 'Version code mismatch'
+          meta['verification'] = 'passed'
+          Path('dist/build-evidence.json').write_text(json.dumps(meta, indent=2))
+          print('VERIFIED: signed release AAB, API 36, SMS bridge, receiver, permissions and version code.')
+          PY_VERIFY
+          cp "$AAB" dist/quickspend-release.aab
+          sha256sum dist/quickspend-release.aab > dist/SHA256SUMS.txt
       - uses: actions/upload-artifact@v4
         with:
-          name: quickspend-apk-${{ github.run_number }}
-          path: android/app/build/outputs/apk/debug/app-debug.apk
+          name: quickspend-play-bundle-${{ github.run_number }}
+          path: dist/
+          if-no-files-found: error
+          retention-days: 14
