@@ -110,7 +110,7 @@ h1{font-size:30px;font-weight:700;letter-spacing:-.5px;margin-bottom:4px}
   <div class="scr" id="s-review"></div>
   <div class="scr" id="s-friends"></div>
   <div class="scr" id="s-insights"></div>
-  <button class="fab" onclick="openSheet({merchant:'Manual entry',amount:'',manual:true})">+</button>
+  <button class="fab" onclick="openSheet({m:'Manual entry',a:'',manual:true})">+</button>
 
   <div class="tabs" id="tabs">
     <div class="tab on" data-t="home"><i>◉</i>Home</div>
@@ -161,10 +161,10 @@ function render(){
  Object.entries(by).sort((a,b)=>b[1]-a[1]).map(([c,v])=>`<div style="margin-bottom:16px"><div style="display:flex;justify-content:space-between;font-size:14px"><span>${ICON[c]||''} ${c}</span><b>${fm(v)}</b></div><div class="bar"><i style="width:${v/mx*100}%"></i></div></div>`).join('');
 }
 function item(x){const p=cut(x.t);return `<div class="item"><div class="ic">${x.t==='Lent'?'↗️':x.t==='Borrowed'?'↙️':ICON[x.c]||'💳'}</div><div class="m"><div>${x.m}</div><span>${x.t==='Lent'||x.t==='Borrowed'?x.t:x.c} · ${x.d}</span></div><div class="amt ${x.t==='Income'?'pos':'neg'}">${p?'+':'−'}${fm(x.a)}</div></div>`}
-function dismiss(id){pending=pending.filter(p=>p.id!==id);render()}
+async function dismiss(id){const entry=pending.find(p=>p.id===id),P=SB();try{if(entry&&entry.sourceKey&&P)await P.completeSms({sourceKey:entry.sourceKey});pending=pending.filter(p=>p.id!==id);render()}catch(e){alert('Could not dismiss this payment. Try again.')}}
 function settle(n){tx.filter(x=>x.who===n).forEach(x=>x.settled=x.a);render()}
 
-document.querySelectorAll('.tab').forEach(t=>t.onclick=()=>{document.querySelectorAll('.tab').forEach(z=>z.classList.remove('on'));t.classList.add('on');document.querySelectorAll('.scr').forEach(s=>s.classList.remove('on'));$('#s-'+t.dataset.t).classList.add('on')});
+document.querySelectorAll('.tab').forEach(t=>t.onclick=()=>{document.querySelectorAll('.tab').forEach(z=>z.classList.remove('on'));t.classList.add('on');document.querySelectorAll('.scr').forEach(s=>s.classList.remove('on'));$('#s-'+t.dataset.t).classList.add('on');if(t.dataset.t==='review')pull(true)});
 
 function sms(){const s=samples[Math.floor(Math.random()*samples.length)];inc={id:++sid,m:s[0],a:s[1],d:'Today'};pending.push(inc);render();
  $('#sms').innerHTML=`<b>HDFC Bank · now</b>Rs ${inc.a} debited from A/c XX4821 at ${inc.m.toUpperCase()}. Avl bal Rs 41,230.`;
@@ -181,12 +181,13 @@ function paint(){
  ${need?`<div class="hd"><span>⚡ Speed dial</span><button class="mini" onclick="toggleAdd('dial')">+</button></div>${adding==='dial'?addbox():''}<div class="dial">${speed.map((n,i)=>`<div class="dl ${cur.who===n?'on':''}" onclick="cur.who='${n}';paint()"><div class="av" style="background:${AVC[i%AVC.length]}">${n[0].toUpperCase()}</div>${n}</div>`).join('')}</div>`:''}
  ${cur.type==='Expense'?`<div class="hd"><span>🔁 EMI</span><div class="chip ${cur.emi?'on':''}" style="padding:5px 12px;font-size:12px" onclick="cur.emi=cur.emi?0:12;paint()">${cur.emi?'On':'Off'}</div></div>${cur.emi?`<input class="fld" type="number" min="2" placeholder="Number of months" value="${cur.emi}" oninput="cur.emi=this.value"><div class="hint">This amount is the monthly instalment. It repeats automatically.</div>`:''}`:''}${cur.cat&&cur.type==='Expense'&&memory[(cur.m||'').toLowerCase()]===cur.cat?'<div class="hint">✨ Remembered from last time</div>':''}
  <div class="acts"><button class="later" onclick="later()">Later</button><button class="save" onclick="save()">Save</button></div>`}
-function save(){if(cur.sourceKey&&tx.some(x=>x.sourceKey===cur.sourceKey)){pending=pending.filter(p=>p.sourceKey!==cur.sourceKey);closeSheet();render();const P=SB();if(P&&persist())P.completeSms({sourceKey:cur.sourceKey}).catch(()=>{});return}const a=Number(cur.a);if(!a){editing=true;paint();return}
+function save(){if(cur.sourceKey&&tx.some(x=>x.sourceKey===cur.sourceKey)){pending=pending.filter(p=>p.sourceKey!==cur.sourceKey);closeSheet();render();const P=SB();if(P&&persist())P.completeSms({sourceKey:cur.sourceKey}).catch(()=>{});return}const a=Number(cur.a);if(!Number.isFinite(a)||a<=0){editing=true;paint();return}
+ const snapshot={tx:tx.slice(),pending:pending.slice(),recur:recur.slice(),memory:{...memory},sid};
  const cat=cur.cat||(CATS[cur.type][0][1]);const who=(cur.type==='Lent'||cur.type==='Borrowed')?(cur.who||'Friend'):null;
  tx.push({id:++sid,t:cur.type,m:who||cur.m,a,c:cat,d:cur.ts?fd(cur.ts):'Today',who,settled:0,ts:cur.ts||Date.now(),acc:cur.acc,sourceKey:cur.sourceKey||null});
  if(cur.type==='Expense'&&cur.m&&!cur.manual)memory[cur.m.toLowerCase()]=cat;
  const em=Math.floor(Number(cur.emi));if(cur.type==='Expense'&&em>1){const n=new Date();recur.push({t:'Expense',m:(cur.manual?cat:cur.m)+' EMI',a,c:cat,day:Math.min(n.getDate(),28),left:em-1,acc:cur.acc,last:n.getFullYear()*12+n.getMonth()})}
- pending=pending.filter(p=>p.id!==cur.id);closeSheet();render();if(cur.sourceKey){const P=SB();if(P&&persist())P.completeSms({sourceKey:cur.sourceKey}).catch(()=>{});else if(P)alert('This entry could not be stored in the app. The bank payment remains in the native inbox. Check free storage.')}}
+ pending=pending.filter(p=>p.id!==cur.id);if(!persist()){tx=snapshot.tx;pending=snapshot.pending;recur=snapshot.recur;sid=snapshot.sid;Object.keys(memory).forEach(k=>delete memory[k]);Object.assign(memory,snapshot.memory);alert('Could not save. Your payment is still waiting in Review. Check free storage and try again.');return}closeSheet();render();if(cur.sourceKey){const P=SB();if(P&&persist())P.completeSms({sourceKey:cur.sourceKey}).catch(()=>{});else if(P)alert('This entry could not be stored in the app. The bank payment remains in the native inbox. Check free storage.')}}
 const MN=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 let accts=[{n:'Main account',i:'🏦'},{n:'Cash',i:'👛'}],view='All',rng='Month',recur=[],ym=[new Date().getFullYear(),new Date().getMonth()],addA=false,rc={};
 const T=()=>tx.filter(x=>view==='All'||(x.acc||accts[0].n)===view);
@@ -303,18 +304,19 @@ async function pull(fg){const P=SB();if(!P||pullingNative)return;pullingNative=t
    tx.push({id:++sid,t,a,c:category,m:who||cleanNativeText((parsed&&parsed.m)||entry.m)||'Bank payment',who,settled:0,ts,d:fd(ts),acc,nativeKey:key,sourceKey:key});
    changed=true;
   }
-  pending=pending.filter(x=>x.sourceKey!==key);if(cur.sourceKey===key)closeSheet();ack.push(key);
+  const before=pending.length;pending=pending.filter(x=>x.sourceKey!==key);if(before!==pending.length)changed=true;if(cur.sourceKey===key)closeSheet();ack.push(key);
  }
  for(const o of r.items||[]){
   if(o.demo)continue;
   const key=o.sourceKey||o.ts+'|'+(o.body||'').slice(0,50);
   if(tx.some(x=>x.sourceKey===key)){completed.push(key);continue;}
-  if(pending.some(x=>x.sourceKey===key)||smsSeen.includes(key))continue;
-  const p=parseSms(o.from||'',o.body||'');
-  if(!p){completed.push(key);continue;}
+  if(pending.some(x=>x.sourceKey===key))continue;
+  const p=parseSms(o.from||'',o.body||'')||(Number(o.amount)>0?{m:cleanNativeText(o.merchant)||'Bank payment',a:Number(o.amount),kind:o.kind==='Income'?'Income':'Expense',acc:null}:null);
+  // Keep unrecognised payments available for manual review; never discard them.
+  const payment=p||{m:'Bank payment · check amount',a:'',kind:'Expense',acc:null};
   smsSeen.push(key);
-  if(p.acc&&!accts.some(b=>b.n===p.acc))accts.push({n:p.acc,i:'🏦'});
-  const it={id:++sid,m:p.m,a:p.a,d:fd(o.ts),ts:o.ts,kind:p.kind,acc:p.acc,sourceKey:key};pending.push(it);last=it;n++;changed=true;
+  if(payment.acc&&!accts.some(b=>b.n===payment.acc))accts.push({n:payment.acc,i:'🏦'});
+  const it={id:++sid,m:payment.m,a:payment.a,d:fd(o.ts),ts:o.ts,kind:payment.kind,acc:payment.acc,sourceKey:key};pending.push(it);last=it;n++;changed=true;
  }
  smsSeen=smsSeen.slice(-1000);
  if(changed||ack.length)render();
@@ -323,7 +325,7 @@ async function pull(fg){const P=SB();if(!P||pullingNative)return;pullingNative=t
  for(const sourceKey of completed)await P.completeSms({sourceKey});
  if(n){if(fg){inc=last;$('#bub').classList.add('show')}else if(!$('#onb').classList.contains('on'))openSheet(last)}
 }catch(e){console.warn('QuickSpend native inbox:',e&&e.message||e)}finally{pullingNative=false}}
-async function showNativeBuild(){const el=$('#native-build');if(!el)return;const P=SB();if(!P){el.textContent='Web version · floating-capture-4';return}try{const s=await P.status();el.textContent=s.nativeBuild?'Android build '+s.nativeBuild+' · '+(s.bridgeRevision||'unknown bridge'):'Older native build · update through your Google Play tester link'}catch(e){el.textContent='Could not read native build: '+(e.message||e)}}
+async function showNativeBuild(){const el=$('#native-build');if(!el)return;const P=SB();if(!P){el.textContent='Web version · floating-capture-5';return}try{const s=await P.status();el.textContent=s.nativeBuild?'Android build '+s.nativeBuild+' · '+(s.bridgeRevision||'unknown bridge'):'Older native build · update through your Google Play tester link'}catch(e){el.textContent='Could not read native build: '+(e.message||e)}}
 function openFloatingSettings(){$('#sheet').innerHTML=`<div class="grab"></div><div class="mer">Floating quick capture</div><p class="sub" style="margin:14px 0">A movable shortcut appears after a bank payment. Tap it to edit the amount, choose a category, and save over your current app.</p><p class="hint">Android needs Display over other apps permission. Quick capture starts automatically after permission is granted. You can turn it off here. An ongoing notification stays visible while it is on. No screen contents are read.</p><div class="hint" id="float-status" role="status">Checking…</div><button class="btn" style="width:100%;min-height:46px;margin:8px 0" onclick="enableFloating()">Allow floating shortcut</button><button class="btn" style="width:100%;min-height:46px;margin-bottom:8px" onclick="testFloating()">Test floating shortcut</button><button class="btn" style="width:100%;min-height:46px;margin-bottom:8px" onclick="pauseFloating()">Turn off floating shortcut</button><button class="btn" style="width:100%;min-height:44px" onclick="closeSheet()">Done</button>`;$('#dim').classList.add('on');$('#sheet').classList.add('on');refreshFloatingStatus()}
 async function refreshFloatingStatus(){const el=$('#float-status');if(!el)return;const P=SB();if(!P){el.textContent='System-wide floating shortcuts are available in Android. Use Test quick capture at the top of this web page to preview the flow.';return}try{const s=await P.overlayStatus();el.textContent=s.error||(s.enabled?(s.allowed?(s.running?'On · go to another app to see pending payments':'Starting · reopen QuickSpend if capture does not start'):'Display over other apps permission is off'):'Off · tap Allow floating shortcut to turn it back on')}catch(e){el.textContent='Could not check floating capture: '+(e.message||e)}}
 async function enableFloating(){const P=SB(),el=$('#float-status');if(!P)return refreshFloatingStatus();try{const s=await P.overlayStatus();if(!s.allowed){localStorage.setItem('qs_overlay_waiting','1');localStorage.setItem('qs_overlay_prompted','1');await P.openOverlaySettings();if(el)el.textContent='Allow display over other apps for QuickSpend, then return. Quick capture starts automatically.';return}await P.setOverlayEnabled({enabled:true});await refreshFloatingStatus()}catch(e){if(el)el.textContent=e.message||String(e)}}
@@ -360,9 +362,10 @@ async function setupFloatingOnLaunch(){
 
 setInterval(()=>{if(!document.hidden)pull(true)},4000);
 document.addEventListener('visibilitychange',()=>{if(!document.hidden){pull(false);finishFloatingSetup()}});
-window.addEventListener('focus',()=>finishFloatingSetup());
+window.addEventListener('focus',()=>{pull(true);finishFloatingSetup()});
 pull(false);
 setupFloatingOnLaunch();
 function later(){if(!cur.manual&&!pending.find(p=>p.id===cur.id))pending.push({id:cur.id,m:cur.m,a:cur.a,d:'Today'});closeSheet();render()}
 render();
 </script></body></html>
+

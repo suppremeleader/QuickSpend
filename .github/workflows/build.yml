@@ -37,6 +37,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
+      - name: Check payment review regressions
+        run: node tests/capture-regression.cjs
       - uses: actions/setup-java@v5
         with:
           distribution: temurin
@@ -166,7 +168,7 @@ jobs:
             public void status(PluginCall call) {
               JSObject r = new JSObject();
               r.put("sms", getPermissionState("sms") == PermissionState.GRANTED);
-              r.put("bridgeRevision", "floating-capture-4");
+              r.put("bridgeRevision", "floating-capture-5");
               try {
                 android.content.pm.PackageInfo info = getContext().getPackageManager().getPackageInfo(getContext().getPackageName(), 0);
                 r.put("nativeBuild", Build.VERSION.SDK_INT >= 28 ? info.getLongVersionCode() : info.versionCode);
@@ -238,7 +240,13 @@ jobs:
               try {
                 org.json.JSONObject snapshot = SmsStore.snapshot(getContext());
                 JSObject result = new JSObject();
-                result.put("items", new JSArray(snapshot.getJSONArray("items").toString()));
+                org.json.JSONArray items = snapshot.getJSONArray("items");
+                for (int i = 0; i < items.length(); i++) {
+                  org.json.JSONObject item = items.getJSONObject(i);
+                  PaymentParser parsed = PaymentParser.parse(item.optString("from"), item.optString("body"));
+                  item.put("amount", parsed.amount).put("kind", parsed.type).put("merchant", parsed.merchant);
+                }
+                result.put("items", new JSArray(items.toString()));
                 result.put("entries", new JSArray(snapshot.getJSONArray("entries").toString()));
                 call.resolve(result);
               } catch (Exception e) { call.reject("Could not read native payment inbox", e); }
@@ -533,6 +541,15 @@ jobs:
           cat > $D/FloatingCaptureService.java <<'EOF'
           package com.quickspend.app;
 
+          import android.animation.ValueAnimator;
+          import android.animation.Animator;
+          import android.animation.AnimatorListenerAdapter;
+          import android.view.animation.OvershootInterpolator;
+          import android.view.animation.AccelerateInterpolator;
+          import android.graphics.Canvas;
+          import android.graphics.Paint;
+          import android.graphics.drawable.RippleDrawable;
+          import android.content.res.ColorStateList;
           import android.app.KeyguardManager;
           import android.app.Notification;
           import android.app.NotificationChannel;
@@ -591,6 +608,9 @@ jobs:
               private WindowManager windows;
               private View bubble;
               private ScrollView panel;
+              private TetherView tether;
+              private ValueAnimator bubbleMotion;
+              private boolean dismissingBubble;
               private WindowManager.LayoutParams bubbleParams;
               private boolean hiddenUntilNextPayment;
               private String panelKey;
@@ -688,7 +708,9 @@ jobs:
               private void updateOverlay() {
                   try {
                       if (!enabled(this) || !Settings.canDrawOverlays(this)) { hideAll(); stopSelf(); return; }
-                      if (appVisible || screenLocked() || hiddenUntilNextPayment) { hideAll(); return; }
+                      if (appVisible || screenLocked()) { hideAll(); return; }
+                      if (dismissingBubble) return;
+                      if (hiddenUntilNextPayment) { hideAll(); return; }
                       List<JSONObject> q = payments();
                       if (q.isEmpty()) { hideAll(); return; }
                       if (panel != null) {
@@ -715,7 +737,7 @@ jobs:
               private void showBubble(int count) {
                   if (bubble != null) {
                       ((TextView) bubble.findViewWithTag("count")).setText(count > 99 ? "99+" : String.valueOf(count));
-                      bubble.setContentDescription("QuickSpend: " + count + " payments to categorise. Tap to open, drag to move, long press to hide.");
+                      bubble.setContentDescription("QuickSpend: " + count + " payments to categorise. Tap to open, drag to move, pull and release to hide.");
                       return;
                   }
                   FrameLayout container = new FrameLayout(this);
@@ -723,7 +745,7 @@ jobs:
                   FrameLayout.LayoutParams circle = new FrameLayout.LayoutParams(dp(52), dp(52), Gravity.CENTER); container.addView(icon, circle);
                   TextView badge = text(count > 99 ? "99+" : String.valueOf(count), 10, Color.WHITE); badge.setTag("count"); badge.setGravity(Gravity.CENTER); badge.setBackground(shape(Color.rgb(219, 72, 85), 12));
                   container.addView(badge, new FrameLayout.LayoutParams(dp(23), dp(20), Gravity.TOP | Gravity.END));
-                  container.setElevation(dp(8)); container.setContentDescription("QuickSpend: " + count + " payments to categorise. Tap to open, drag to move, long press to hide.");
+                  container.setElevation(dp(8)); container.setContentDescription("QuickSpend: " + count + " payments to categorise. Tap to open, drag to move, pull and release to hide.");
                   SharedPreferences p = getSharedPreferences(PREFS, 0); DisplayMetrics screen = display();
                   bubbleParams = new WindowManager.LayoutParams(dp(60), dp(60), windowType(), WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE | WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL, PixelFormat.TRANSLUCENT);
                   bubbleParams.gravity = Gravity.TOP | Gravity.START;
@@ -731,38 +753,122 @@ jobs:
                   bubbleParams.y = Math.max(dp(24), Math.min(p.getInt("y", dp(220)), screen.heightPixels - dp(100)));
                   container.setOnClickListener(view -> { List<JSONObject> q = payments(); if (!q.isEmpty()) showPanel(q.get(0)); });
                   container.setOnTouchListener(new View.OnTouchListener() {
-                      float downX, downY; int oldX, oldY; long downTime; boolean moved;
+                      float downX, downY, distance; int oldX, oldY; long downTime; boolean moved;
                       @Override public boolean onTouch(View view, MotionEvent event) {
+                          if (dismissingBubble) return true;
                           if (event.getActionMasked() == MotionEvent.ACTION_DOWN) {
+                              if (dismissingBubble) return true;
+                              if (bubbleMotion != null) { bubbleMotion.cancel(); bubbleMotion=null; }
+                              view.animate().cancel(); view.setScaleX(1); view.setScaleY(1); view.setAlpha(1);
+                              distance=0;
                               downX = event.getRawX(); downY = event.getRawY(); oldX = bubbleParams.x; oldY = bubbleParams.y; moved = false; downTime = event.getEventTime(); return true;
                           }
                           if (event.getActionMasked() == MotionEvent.ACTION_MOVE) {
                               float dx = event.getRawX() - downX, dy = event.getRawY() - downY;
-                              if (Math.hypot(dx, dy) > ViewConfiguration.get(FloatingCaptureService.this).getScaledTouchSlop()) moved = true;
+                              distance=(float)Math.hypot(dx, dy);
+                              if (!moved && distance > ViewConfiguration.get(FloatingCaptureService.this).getScaledTouchSlop()) { moved=true; if (motionEnabled()) showTether(oldX+dp(30), oldY+dp(30)); }
                               if (moved) {
                                   DisplayMetrics screen = display();
-                                  bubbleParams.x = Math.max(0, Math.min(oldX + Math.round(dx), screen.widthPixels - dp(60)));
-                                  bubbleParams.y = Math.max(dp(24), Math.min(oldY + Math.round(dy), screen.heightPixels - dp(100)));
+                                  bubbleParams.x = Math.max(0, Math.min(oldX + Math.round(dx * 0.62f), screen.widthPixels - dp(60)));
+                                  bubbleParams.y = Math.max(dp(24), Math.min(oldY + Math.round(dy * 0.62f), screen.heightPixels - dp(100)));
+                                  float stretch=Math.min(0.24f, distance/dp(600));
+                                  view.setScaleX(Math.abs(dx) >= Math.abs(dy) ? 1+stretch : 1-stretch/2);
+                                  view.setScaleY(Math.abs(dy) > Math.abs(dx) ? 1+stretch : 1-stretch/2);
+                                  if (tether != null) { tether.endX=bubbleParams.x+dp(30); tether.endY=bubbleParams.y+dp(30); tether.invalidate(); }
                                   try { windows.updateViewLayout(view, bubbleParams); } catch (RuntimeException ignored) { }
                               }
                               return true;
                           }
                           if (event.getActionMasked() == MotionEvent.ACTION_UP) {
-                              if (moved) getSharedPreferences(PREFS, 0).edit().putInt("x", bubbleParams.x).putInt("y", bubbleParams.y).apply();
+                              hideTether(); view.setScaleX(1); view.setScaleY(1);
+                              if (moved) {
+                                  DisplayMetrics screen=display();
+                                  if (distance >= dp(104)) animateBubble(bubbleParams.x+dp(30) < screen.widthPixels/2 ? -dp(70) : screen.widthPixels+dp(10), bubbleParams.y+dp(30) < screen.heightPixels/2 ? -dp(70) : screen.heightPixels+dp(10), true);
+                                  else animateBubble(bubbleParams.x+dp(30) < screen.widthPixels/2 ? dp(6) : screen.widthPixels-dp(66), bubbleParams.y, false);
+                              }
                               else if (event.getEventTime() - downTime > 650) { hiddenUntilNextPayment = true; hideAll(); Toast.makeText(FloatingCaptureService.this, "Shortcut hidden. Payments stay in Review.", Toast.LENGTH_SHORT).show(); }
                               else view.performClick();
                               return true;
                           }
-                          return event.getActionMasked() == MotionEvent.ACTION_CANCEL;
+                          if (event.getActionMasked() == MotionEvent.ACTION_CANCEL) { hideTether(); view.setScaleX(1); view.setScaleY(1); animateBubble(oldX, oldY, false); return true; }
+                          return false;
                       }
                   });
                   windows.addView(container, bubbleParams);
                   bubble = container;
+                  if (motionEnabled()) { container.setScaleX(.7f); container.setScaleY(.7f); container.setAlpha(0); container.animate().alpha(1).scaleX(1).scaleY(1).setDuration(260).setInterpolator(new OvershootInterpolator(.7f)).start(); }
                   lastError = "";
+              }
+              private String categoryIcon(String label) {
+                  switch(label) {
+                      case "Food": return "🍔"; case "Travel": return "🚕"; case "Shopping": return "🛍";
+                      case "Bills": return "🧾"; case "Fun": return "🎬"; case "Health": return "💊";
+                      case "Salary": return "💼"; case "Gift": return "🎁"; case "Refund": return "↩";
+                      case "Friend": return "🤝"; case "Family": return "🏠"; default: return "✨";
+                  }
+              }
+              private boolean motionEnabled() {
+                  return Build.VERSION.SDK_INT >= 26 ? ValueAnimator.areAnimatorsEnabled() : Settings.Global.getFloat(getContentResolver(), Settings.Global.ANIMATOR_DURATION_SCALE, 1f) != 0;
+              }
+              private android.graphics.drawable.Drawable chipBackground(boolean selected) {
+                  GradientDrawable base = shape(selected ? ACCENT : Color.rgb(34, 37, 33), 16);
+                  base.setStroke(dp(1), selected ? ACCENT : Color.rgb(55, 60, 51));
+                  return new RippleDrawable(ColorStateList.valueOf(0x28ffffff), base, null);
+              }
+              private class TetherView extends View {
+                  private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
+                  float anchorX, anchorY, endX, endY;
+                  TetherView() { super(FloatingCaptureService.this); paint.setColor(ACCENT); paint.setStrokeCap(Paint.Cap.ROUND); }
+                  @Override protected void onDraw(Canvas canvas) {
+                      float distance = (float)Math.hypot(endX-anchorX, endY-anchorY);
+                      paint.setAlpha(135); paint.setStrokeWidth(Math.max(dp(2), dp(7)-distance/50));
+                      canvas.drawLine(anchorX, anchorY, endX, endY, paint);
+                      paint.setAlpha(200); canvas.drawCircle(anchorX, anchorY, dp(5), paint);
+                      paint.setAlpha(255); paint.setTextSize(dp(12)); paint.setTextAlign(Paint.Align.CENTER);
+                      canvas.drawText(distance >= dp(64) ? "Release to hide · kept in Review" : "Pull further to hide", getWidth()/2f, getHeight()-dp(38), paint);
+                  }
+              }
+              private void showTether(float x, float y) {
+                  hideTether();
+                  tether = new TetherView(); tether.anchorX=x; tether.anchorY=y; tether.endX=x; tether.endY=y;
+                  WindowManager.LayoutParams lp = new WindowManager.LayoutParams(-1, -1, windowType(), WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE | WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE, PixelFormat.TRANSLUCENT);
+                  lp.gravity=Gravity.TOP | Gravity.START;
+                  windows.addView(tether, lp);
+              }
+              private void hideTether() {
+                  if (tether != null) { try { windows.removeView(tether); } catch (RuntimeException ignored) { } tether=null; }
+              }
+              private void animateBubble(int targetX, int targetY, boolean dismiss) {
+                  if (bubble == null) return;
+                  if (bubbleMotion != null) { bubbleMotion.cancel(); bubbleMotion=null; }
+                  final View target=bubble; final int fromX=bubbleParams.x, fromY=bubbleParams.y;
+                  dismissingBubble=dismiss;
+                  if (dismiss) { hiddenUntilNextPayment=true; hideTether(); }
+                  bubbleMotion=ValueAnimator.ofFloat(0, 1);
+                  bubbleMotion.setDuration(motionEnabled() ? (dismiss ? 320 : 280) : 0);
+                  bubbleMotion.setInterpolator(dismiss ? new AccelerateInterpolator(1.4f) : new OvershootInterpolator(0.8f));
+                  bubbleMotion.addUpdateListener(animation -> {
+                      if (bubble != target) return;
+                      float f=(float)animation.getAnimatedValue();
+                      bubbleParams.x=fromX+Math.round((targetX-fromX)*f); bubbleParams.y=fromY+Math.round((targetY-fromY)*f);
+                      if (dismiss) { target.setAlpha(1-f); target.setScaleX(1-f*.7f); target.setScaleY(1-f*.7f); }
+                      try { windows.updateViewLayout(target, bubbleParams); } catch (RuntimeException ignored) { }
+                  });
+                  bubbleMotion.addListener(new AnimatorListenerAdapter() {
+                      boolean cancelled;
+                      @Override public void onAnimationCancel(Animator animation) { cancelled=true; }
+                      @Override public void onAnimationEnd(Animator animation) {
+                          if (cancelled || bubble != target) return;
+                          bubbleMotion=null;
+                          if (dismiss) { dismissingBubble=false; hideBubble(); Toast.makeText(FloatingCaptureService.this, "Hidden · payment kept in Review", Toast.LENGTH_SHORT).show(); }
+                          else getSharedPreferences(PREFS, 0).edit().putInt("x", bubbleParams.x).putInt("y", bubbleParams.y).apply();
+                      }
+                  });
+                  bubbleMotion.start();
               }
               private LinearLayout row() { LinearLayout r = new LinearLayout(this); r.setOrientation(LinearLayout.HORIZONTAL); r.setGravity(Gravity.CENTER_VERTICAL); return r; }
               private Button button(String label, boolean selected) {
-                  Button b = new Button(this); b.setText(label); b.setTextSize(12); b.setAllCaps(false); b.setTextColor(selected ? Color.BLACK : FG); b.setBackground(shape(selected ? ACCENT : Color.rgb(36, 36, 46), 12)); b.setMinWidth(0); b.setMinimumWidth(0); b.setMinHeight(dp(44)); b.setMinimumHeight(dp(44)); b.setPadding(dp(8), dp(6), dp(8), dp(6)); return b;
+                  Button b = new Button(this); b.setText(label); b.setTextSize(12); b.setAllCaps(false); b.setTextColor(selected ? Color.BLACK : FG); b.setBackground(chipBackground(selected)); b.setMinWidth(0); b.setMinimumWidth(0); b.setMinHeight(dp(44)); b.setMinimumHeight(dp(44)); b.setPadding(dp(8), dp(6), dp(8), dp(6)); return b;
               }
               private void append(LinearLayout root, View child, int top) {
                   LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2); lp.topMargin = dp(top); root.addView(child, lp);
@@ -770,13 +876,16 @@ jobs:
               private void showPanel(JSONObject item) {
                   hideBubble(); hidePanel(); panelKey = SmsStore.key(item);
                   PaymentParser details = PaymentParser.parse(item.optString("from"), item.optString("body"));
-                  ScrollView scroll = new ScrollView(this); scroll.setFillViewport(false); scroll.setBackground(shape(BG, 24));
-                  LinearLayout root = new LinearLayout(this); root.setOrientation(LinearLayout.VERTICAL); root.setPadding(dp(18), dp(14), dp(18), dp(18)); scroll.addView(root);
+                  ScrollView scroll = new ScrollView(this); scroll.setFillViewport(false); scroll.setVerticalScrollBarEnabled(false); scroll.setClipToOutline(true);
+                  GradientDrawable card = new GradientDrawable(GradientDrawable.Orientation.TL_BR, new int[]{Color.rgb(31,36,28), BG}); card.setCornerRadius(dp(28)); card.setStroke(dp(1), Color.rgb(70,78,59)); scroll.setBackground(card); scroll.setElevation(dp(16));
+                  LinearLayout root = new LinearLayout(this); root.setOrientation(LinearLayout.VERTICAL); root.setPadding(dp(22), dp(18), dp(22), dp(22)); scroll.addView(root);
+                  LinearLayout brand = row(); ImageView logo = new ImageView(this); logo.setImageResource(R.drawable.qs_brand_icon); logo.setBackground(shape(BG, 10)); logo.setClipToOutline(true); brand.addView(logo, new LinearLayout.LayoutParams(dp(28), dp(28)));
+                  TextView brandName = text("QUICKSPEND", 11, ACCENT); brandName.setLetterSpacing(.16f); LinearLayout.LayoutParams brandLp = new LinearLayout.LayoutParams(-2,-2); brandLp.leftMargin=dp(10); brand.addView(brandName, brandLp); append(root, brand, 0);
                   LinearLayout header = row(); TextView title = text(item.optBoolean("demo") ? "Quick capture preview" : "Quick capture", 17, FG); title.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
-                  header.addView(title, new LinearLayout.LayoutParams(0, -2, 1)); Button close = button("×", false); close.setContentDescription("Close quick capture"); header.addView(close, new LinearLayout.LayoutParams(dp(44), dp(44))); append(root, header, 0);
+                  header.addView(title, new LinearLayout.LayoutParams(0, -2, 1)); Button fullscreen = button("⛶", false); fullscreen.setContentDescription("Expand quick capture to fullscreen"); header.addView(fullscreen, new LinearLayout.LayoutParams(dp(44),dp(44))); Button close = button("×", false); close.setContentDescription("Close quick capture"); header.addView(close, new LinearLayout.LayoutParams(dp(44), dp(44))); append(root, header, 10);
                   TextView merchant = text(item.optBoolean("demo") ? "Preview only · no expense will be saved" : details.merchant, 13, MUTED); append(root, merchant, 8);
-                  LinearLayout amountRow = row(); amountRow.setGravity(Gravity.CENTER);
-                  TextView amountLabel = text("₹" + details.amountText(), 33, FG); amountLabel.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+                  LinearLayout amountRow = row(); amountRow.setGravity(Gravity.CENTER); amountRow.setPadding(dp(12),dp(18),dp(12),dp(18)); amountRow.setBackground(shape(Color.rgb(13,17,12),20));
+                  TextView amountLabel = text("₹" + details.amountText(), 40, ACCENT); amountLabel.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
                   EditText amount = new EditText(this); amount.setText(details.amountText()); amount.setTextSize(28); amount.setTextColor(FG); amount.setSingleLine(true); amount.setSelectAllOnFocus(true); amount.setInputType(InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_DECIMAL); amount.setVisibility(View.GONE); amount.setContentDescription("Payment amount in rupees");
                   amountRow.addView(amountLabel); amountRow.addView(amount, new LinearLayout.LayoutParams(0, -2, 1));
                   Button pencil = button("✎", false); pencil.setContentDescription("Edit amount"); LinearLayout.LayoutParams penLp = new LinearLayout.LayoutParams(dp(44), dp(44)); penLp.leftMargin = dp(8); amountRow.addView(pencil, penLp); append(root, amountRow, 16);
@@ -791,9 +900,9 @@ jobs:
                       for (int i = 0; i < labels.length; i += 2) {
                           LinearLayout categoryRow = row();
                           for (int j = i; j < Math.min(i + 2, labels.length); j++) {
-                              String label = labels[j]; Button chip = button(label, label.equals(category[0])); chip.setContentDescription(label + " category");
-                              LinearLayout.LayoutParams chipLp = new LinearLayout.LayoutParams(0, dp(46), 1); chipLp.setMargins(dp(3), dp(3), dp(3), dp(3)); categoryRow.addView(chip, chipLp);
-                              chip.setOnClickListener(view -> { category[0] = label; for (int a = 0; a < categories.getChildCount(); a++) { LinearLayout r = (LinearLayout) categories.getChildAt(a); for (int b = 0; b < r.getChildCount(); b++) { Button other = (Button) r.getChildAt(b); boolean active = other.getText().toString().equals(label); other.setTextColor(active ? Color.BLACK : FG); other.setBackground(shape(active ? ACCENT : Color.rgb(36, 36, 46), 12)); } } });
+                              String label = labels[j]; Button chip = button(categoryIcon(label) + "  " + label, label.equals(category[0])); chip.setTag(label); chip.setContentDescription(label + " category");
+                              LinearLayout.LayoutParams chipLp = new LinearLayout.LayoutParams(0, dp(52), 1); chipLp.setMargins(dp(3), dp(3), dp(3), dp(3)); categoryRow.addView(chip, chipLp);
+                              chip.setOnClickListener(view -> { category[0] = label; for (int a = 0; a < categories.getChildCount(); a++) { LinearLayout r = (LinearLayout) categories.getChildAt(a); for (int b = 0; b < r.getChildCount(); b++) { Button other = (Button) r.getChildAt(b); boolean active = label.equals(other.getTag()); other.setTextColor(active ? Color.BLACK : FG); other.setBackground(chipBackground(active)); } } });
                           }
                           categories.addView(categoryRow);
                       }
@@ -803,18 +912,27 @@ jobs:
                       LinearLayout.LayoutParams choiceLp = new LinearLayout.LayoutParams(0, dp(44), 1); choiceLp.setMargins(dp(2), 0, dp(2), 0); types.addView(choice, choiceLp);
                       choice.setOnClickListener(view -> {
                           type[0] = label; category[0] = null;
-                          for (int i = 0; i < types.getChildCount(); i++) { Button other = (Button) types.getChildAt(i); boolean active = other.getText().toString().equals(label); other.setTextColor(active ? Color.BLACK : FG); other.setBackground(shape(active ? ACCENT : Color.rgb(36, 36, 46), 12)); }
+                          for (int i = 0; i < types.getChildCount(); i++) { Button other = (Button) types.getChildAt(i); boolean active = other.getText().toString().equals(label); other.setTextColor(active ? Color.BLACK : FG); other.setBackground(chipBackground(active)); }
                           boolean debt = label.equals("Lent") || label.equals("Borrowed"); person.setVisibility(debt ? View.VISIBLE : View.GONE); person.setHint(label.equals("Lent") ? "Who did you lend to?" : "Who did you borrow from?"); drawCategories.run();
                       });
                   }
                   drawCategories.run();
                   TextView error = text("", 12, Color.rgb(255, 128, 128)); append(root, error, 8);
-                  LinearLayout actions = row(); Button later = button("Later", false), save = button(item.optBoolean("demo") ? "Finish test" : "Save", true);
+                  LinearLayout actions = row(); Button later = button("Later", false), save = button(item.optBoolean("demo") ? "Finish test" : "Save payment  ✓", true);
                   LinearLayout.LayoutParams actionLp = new LinearLayout.LayoutParams(0, dp(48), 1); actionLp.setMargins(dp(3), dp(6), dp(3), 0); actions.addView(later, actionLp); actions.addView(save, new LinearLayout.LayoutParams(actionLp)); append(root, actions, 8);
-                  TextView note = text("Tap × to collapse. Long press the bubble to hide it.", 11, MUTED); note.setGravity(Gravity.CENTER); append(root, note, 10);
-                  WindowManager.LayoutParams lp = new WindowManager.LayoutParams(Math.min(dp(380), display().widthPixels - dp(24)), Math.min(dp(590), display().heightPixels - dp(80)), windowType(), WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL | WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH, PixelFormat.TRANSLUCENT);
+                  TextView note = text("Pull the bubble and release to hide · kept in Review", 11, MUTED); note.setGravity(Gravity.CENTER); append(root, note, 10);
+                  WindowManager.LayoutParams lp = new WindowManager.LayoutParams(Math.min(dp(380), display().widthPixels - dp(24)), Math.min(dp(640), display().heightPixels - dp(80)), windowType(), WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL | WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH, PixelFormat.TRANSLUCENT);
                   lp.gravity = Gravity.CENTER; lp.softInputMode = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE;
                   scroll.setOnTouchListener((view, event) -> { if (event.getAction() == MotionEvent.ACTION_OUTSIDE) { collapsePanel(); return true; } return false; });
+                  final boolean[] expanded = {false};
+                  fullscreen.setOnClickListener(view -> {
+                      expanded[0]=!expanded[0];
+                      lp.width=expanded[0] ? display().widthPixels-dp(16) : Math.min(dp(380), display().widthPixels-dp(24));
+                      lp.height=expanded[0] ? display().heightPixels-dp(48) : Math.min(dp(640), display().heightPixels-dp(80));
+                      scroll.setFillViewport(expanded[0]); fullscreen.setText(expanded[0] ? "⊡" : "⛶"); fullscreen.setContentDescription(expanded[0] ? "Restore compact popup" : "Expand quick capture to fullscreen");
+                      try { windows.updateViewLayout(scroll,lp); } catch (RuntimeException e) { error.setText("Could not resize popup."); }
+                      if (motionEnabled()) { scroll.setAlpha(.65f); scroll.animate().alpha(1).setDuration(160).start(); }
+                  });
                   close.setOnClickListener(view -> collapsePanel());
                   pencil.setOnClickListener(view -> { amountLabel.setVisibility(View.GONE); amount.setVisibility(View.VISIBLE); amount.requestFocus(); amount.post(() -> ((InputMethodManager) getSystemService(INPUT_METHOD_SERVICE)).showSoftInput(amount, InputMethodManager.SHOW_IMPLICIT)); });
                   later.setOnClickListener(view -> { if (item.optBoolean("demo")) { try { SmsStore.complete(this, SmsStore.key(item), null); } catch (RuntimeException e) { error.setText("Could not dismiss preview. Try again."); return; } } hiddenUntilNextPayment = true; hideAll(); Toast.makeText(this, "Saved for later in Review", Toast.LENGTH_SHORT).show(); });
@@ -837,11 +955,19 @@ jobs:
                       } catch (Exception e) { save.setEnabled(true); error.setText("Could not save. Check free storage and try again."); }
                   });
                   windows.addView(scroll, lp); panel = scroll;
+                  if (motionEnabled()) { scroll.setAlpha(0); scroll.setScaleX(.94f); scroll.setScaleY(.94f); scroll.setTranslationY(dp(22)); scroll.animate().alpha(1).scaleX(1).scaleY(1).translationY(0).setDuration(240).setInterpolator(new OvershootInterpolator(.6f)).start(); }
               }
-              private void collapsePanel() { hidePanel(); updateOverlay(); }
-              private void hideBubble() { if (bubble != null) { try { windows.removeView(bubble); } catch (RuntimeException ignored) { } bubble = null; } }
+              private void collapsePanel() {
+                  if (panel == null) return;
+                  if (!motionEnabled()) { hidePanel(); updateOverlay(); return; }
+                  final ScrollView closing=panel;
+                  closing.animate().cancel(); closing.setEnabled(false);
+                  closing.animate().alpha(0).scaleX(.94f).scaleY(.94f).translationY(dp(18)).setDuration(150).withEndAction(() -> { if (panel == closing) { hidePanel(); updateOverlay(); } }).start();
+              }
+              private void hideBubble() { hideTether(); if (bubbleMotion != null) { bubbleMotion.cancel(); bubbleMotion=null; } dismissingBubble=false; if (bubble != null) { bubble.animate().cancel(); try { windows.removeView(bubble); } catch (RuntimeException ignored) { } bubble = null; } }
               private void hidePanel() {
                   if (panel != null) {
+                      panel.animate().cancel();
                       ((InputMethodManager) getSystemService(INPUT_METHOD_SERVICE)).hideSoftInputFromWindow(panel.getWindowToken(), 0);
                       try { windows.removeView(panel); } catch (RuntimeException ignored) { }
                       panel = null; panelKey = null;
@@ -1063,7 +1189,7 @@ jobs:
               assert any(n.endswith('/qs_brand_icon.png') for n in archive.namelist()), 'Native brand icon missing'
               assert 'base/assets/public/assets/quickspend-icon.png' in archive.namelist(), 'Web icon asset missing'
               html = archive.read('base/assets/public/index.html').decode()
-              assert 'nativePromise' in html and 'floating-capture-4' in html, 'Outdated floating-capture HTML bridge'
+              assert 'nativePromise' in html and 'floating-capture-5' in html, 'Outdated floating-capture HTML bridge'
               assert any(n.startswith('META-INF/') and n.upper().endswith(('.RSA', '.DSA', '.EC')) for n in archive.namelist()), 'Bundle has no signing certificate'
           meta = json.loads(Path('release-metadata.json').read_text())
           assert int(root.get(ns + 'versionCode')) == meta['versionCode'], 'Version code mismatch'
@@ -1079,3 +1205,4 @@ jobs:
           path: dist/
           if-no-files-found: error
           retention-days: 14
+
