@@ -1037,7 +1037,15 @@ jobs:
           assert {'android.permission.POST_NOTIFICATIONS', 'android.permission.RECEIVE_SMS', 'android.permission.SYSTEM_ALERT_WINDOW', 'android.permission.FOREGROUND_SERVICE', 'android.permission.FOREGROUND_SERVICE_SPECIAL_USE'} <= permissions, 'Native permissions missing'
           service = next((node for node in root.find('application').findall('service') if node.get(ns + 'name', '').endswith('FloatingCaptureService')), None)
           assert service is not None and service.get(ns + 'exported') == 'false', 'Overlay service missing or exported'
-          assert service.get(ns + 'foregroundServiceType') == 'specialUse', 'Overlay service type missing'
+          service_type = service.get(ns + 'foregroundServiceType', '')
+          def has_special_use(value):
+              if 'specialUse' in value.split('|'):
+                  return True
+              try:
+                  return bool(int(value, 0) & 0x40000000)
+              except ValueError:
+                  return False
+          assert has_special_use(service_type), f'Overlay service specialUse flag missing: {service_type!r}'
           assert service.find('property') is not None, 'Foreground service use-case explanation missing'
           with ZipFile('android/app/build/outputs/bundle/release/app-release.aab') as archive:
               dex = [archive.read(n) for n in archive.namelist() if n.startswith('base/dex/') and n.endswith('.dex')]
