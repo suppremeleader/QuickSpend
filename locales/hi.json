@@ -395,5 +395,12 @@
   "Delete this entry? Your balance will be updated.": "यह लेन-देन हटाएँ? आपका बैलेंस अपडेट हो जाएगा।",
   "Accounts": "खाते",
   "Edit accounts": "खाते संपादित करें",
-  "Add account": "खाता जोड़ें"
+  "Add account": "खाता जोड़ें",
+  "Edit account": "खाता बदलें",
+  "Account name": "खाते का नाम",
+  "Move records to": "रिकॉर्ड इस खाते में भेजें",
+  "Deleting an account moves its transactions and plans to the selected account.": "खाता हटाने पर उसके लेन-देन और योजनाएँ चुने गए खाते में चली जाएँगी।",
+  "Delete account": "खाता हटाएँ",
+  "Choose a unique account name.": "खाते का अलग नाम चुनें।",
+  "Delete account and move its records?": "खाता हटाकर उसके रिकॉर्ड दूसरे खाते में भेजें?"
 }
