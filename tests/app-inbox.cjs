@@ -13,7 +13,7 @@ function app({seen=true,broken=false,savedLanguage=null,languageFails=false,save
   if(m==='completeSms'){completed.push(o.sourceKey);inbox.items=inbox.items.filter(x=>x.sourceKey!==o.sourceKey);return{}}
   if(m==='acknowledgeSaved'){acks.push(...o.keys);inbox.entries=inbox.entries.filter(x=>!o.keys.includes(x.nativeKey));return{}}
   if(m==='overlayStatus')return{allowed:true,enabled:true,running:true};return{}
- }},addEventListener:(event,fn)=>listeners[event]=fn},setInterval(){},setTimeout(){},clearTimeout(){},confirm:()=>true,alert(){}};
+ }},addEventListener:(event,fn)=>{const previous=listeners[event];listeners[event]=previous?(...args)=>{previous(...args);fn(...args)}:fn}},setInterval(){},setTimeout(){},clearTimeout(){},confirm:()=>true,alert(){}};
  vm.createContext(c);vm.runInContext(script,c);
  return{c,nodes,inbox,listeners,documentListeners,completed,acks,eval:s=>vm.runInContext(s,c)};
 }

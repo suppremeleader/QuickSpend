@@ -1,0 +1,35 @@
+name: Notify published internal updates
+on:
+  schedule:
+    - cron: '7,22,37,52 * * * *'
+  workflow_dispatch:
+permissions:
+  contents: write
+  id-token: write
+concurrency:
+  group: quickspend-internal-release-alerts
+  cancel-in-progress: false
+jobs:
+  notify:
+    if: ${{ vars.UPDATE_ALERTS_ENABLED == 'true' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Validate release watcher
+        run: python3 -m unittest discover -s tests -p 'test_release_watch.py'
+      - name: Authenticate with Google
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ vars.UPDATE_ALERTS_WIF_PROVIDER }}
+          service_account: ${{ vars.UPDATE_ALERTS_SERVICE_ACCOUNT }}
+      - name: Install Google authorization support
+        run: python3 -m pip install 'google-auth[requests]>=2.38,<3'
+      - name: Notify only newly published releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+          UPDATE_ALERTS_ENABLED: ${{ vars.UPDATE_ALERTS_ENABLED }}
+        run: python3 scripts/release_watch.py

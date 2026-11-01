@@ -45,6 +45,8 @@ jobs:
           node tests/budgets.cjs
           node tests/account-layout.cjs
           node tests/account-polish.cjs
+          node tests/update-ui.cjs
+          python3 -m unittest discover -s tests -p "test_release_watch.py"
       - uses: actions/setup-java@v5
         with:
           distribution: temurin
@@ -55,6 +57,8 @@ jobs:
           python3 tests/extract-motion.py /tmp/qs-motion/com/quickspend/app/CaptureMotion.java
           javac -d /tmp/qs-motion /tmp/qs-motion/com/quickspend/app/CaptureMotion.java tests/CaptureMotionTest.java
           java -cp /tmp/qs-motion CaptureMotionTest
+          javac -d /tmp/qs-motion native/UpdatePolicy.java tests/UpdatePolicyTest.java
+          java -cp /tmp/qs-motion UpdatePolicyTest
       - uses: android-actions/setup-android@v3
         with:
           packages: platform-tools
@@ -78,7 +82,7 @@ jobs:
           if [ ! -d android ]; then npx cap add android; fi
           D=android/app/src/main/java/com/quickspend/app
           mkdir -p $D
-          cp native/QsLanguage.java native/AccountBridgePlugin.java $D/
+          cp native/QsLanguage.java native/AccountBridgePlugin.java native/UpdatePolicy.java native/UpdatePush.java native/UpdateMessagingService.java native/UpdateBridgePlugin.java $D/
           if [ -s config/google-services.json ]; then
             mkdir -p android/app/src/main/assets/cloud
             cp config/google-services.json android/app/src/main/assets/cloud/
@@ -188,7 +192,7 @@ jobs:
               r.put("sms", getPermissionState("sms") == PermissionState.GRANTED);
               r.put("language", QsLanguage.get(getContext()));
               r.put("languageChosen", QsLanguage.chosen(getContext()));
-              r.put("bridgeRevision", "floating-capture-10");
+              r.put("bridgeRevision", "floating-capture-11");
               try {
                 android.content.pm.PackageInfo info = getContext().getPackageManager().getPackageInfo(getContext().getPackageName(), 0);
                 r.put("nativeBuild", Build.VERSION.SDK_INT >= 28 ? info.getLongVersionCode() : info.versionCode);
@@ -400,11 +404,13 @@ jobs:
             public void onCreate(Bundle savedInstanceState) {
               registerPlugin(SmsBridgePlugin.class);
               registerPlugin(AccountBridgePlugin.class);
+              registerPlugin(UpdateBridgePlugin.class);
               super.onCreate(savedInstanceState);
               if (android.os.Build.VERSION.SDK_INT >= 26) {
                 android.app.NotificationManager nm = (android.app.NotificationManager) getSystemService(NOTIFICATION_SERVICE);
                 nm.createNotificationChannel(new android.app.NotificationChannel(SmsReceiver.CH, QsLanguage.tr(this,"Payments"), android.app.NotificationManager.IMPORTANCE_HIGH));
               }
+              UpdatePush.configure(this);
               grab(getIntent());
             }
 
@@ -417,6 +423,7 @@ jobs:
             @Override
             public void onResume() {
               super.onResume();
+              UpdatePush.configure(this);
               FloatingCaptureService.activityVisible(this, true);
               if (getBridge() != null && getBridge().getWebView() != null) {
                 getBridge().getWebView().postDelayed(() -> {
@@ -1195,6 +1202,28 @@ jobs:
           assert 0 < code <= 2100000000, 'versionCode must be a positive Android version code'
           version = os.environ.get('INPUT_VERSION_NAME', '').strip() or json.loads(Path('package.json').read_text())['version'] + '.' + os.environ['GITHUB_RUN_NUMBER']
           assert re.fullmatch(r'[A-Za-z0-9._+-]{1,80}', version), 'Invalid version name'
+          manifest = Path('android/app/src/main/AndroidManifest.xml')
+          import xml.etree.ElementTree as ET
+          tree = ET.parse(manifest); root = tree.getroot(); ns = '{http://schemas.android.com/apk/res/android}'; app = root.find('application')
+          push = next((x for x in app.findall('service') if x.get(ns+'name')=='.UpdateMessagingService'),None)
+          if push is None:
+              push=ET.SubElement(app,'service',{ns+'name':'.UpdateMessagingService',ns+'exported':'false'})
+              intent=ET.SubElement(push,'intent-filter');ET.SubElement(intent,'action',{ns+'name':'com.google.firebase.MESSAGING_EVENT'})
+          for name,value in [('com.google.firebase.messaging.default_notification_channel_id','qs_updates'),('com.google.firebase.messaging.default_notification_icon','@drawable/ic_qs_notification')]:
+              if not any(x.get(ns+'name')==name for x in app.findall('meta-data')):
+                  ET.SubElement(app,'meta-data',{ns+'name':name,(ns+'resource' if value.startswith('@') else ns+'value'):value})
+          queries=root.find('queries')
+          if queries is None: queries=ET.SubElement(root,'queries')
+          if not any(x.get(ns+'name')=='com.android.vending' for x in queries.findall('package')):ET.SubElement(queries,'package',{ns+'name':'com.android.vending'})
+          tree.write(manifest,encoding='utf-8',xml_declaration=True)
+          config=Path('config/google-services.json')
+          if config.is_file():
+              data=json.loads(config.read_text());client=next(x for x in data['client'] if x['client_info']['android_client_info']['package_name']=='com.quickspend.app')
+              values=ET.Element('resources')
+              resources={'google_app_id':client['client_info']['mobilesdk_app_id'],'google_api_key':client['api_key'][0]['current_key'],'gcm_defaultSenderId':data['project_info']['project_number'],'project_id':data['project_info']['project_id']}
+              if data['project_info'].get('storage_bucket'):resources['google_storage_bucket']=data['project_info']['storage_bucket']
+              for name,value in resources.items():ET.SubElement(values,'string',{'name':name,'translatable':'false'}).text=str(value)
+              ET.ElementTree(values).write('android/app/src/main/res/values/qs_firebase.xml',encoding='utf-8',xml_declaration=True)
           app_gradle = Path('android/app/build.gradle')
           s = app_gradle.read_text()
           s, count = re.subn(r'\bversionCode\s+\d+', 'versionCode ' + str(code), s)
@@ -1202,7 +1231,7 @@ jobs:
           s, count = re.subn(r'\bversionName\s+[\x27\x22][^\x27\x22]*[\x27\x22]', 'versionName "' + version + '"', s)
           assert count == 1, 'Cannot locate versionName'
           s += '\napply from: "ci-release-signing.gradle"\n'
-          s += "\ndependencies {\n    implementation platform('com.google.firebase:firebase-bom:35.1.0')\n    implementation 'com.google.firebase:firebase-auth'\n    implementation 'com.google.firebase:firebase-firestore'\n    implementation 'androidx.credentials:credentials:1.3.0'\n    implementation 'androidx.credentials:credentials-play-services-auth:1.3.0'\n    implementation 'com.google.android.libraries.identity.googleid:googleid:1.1.1'\n}\n"
+          s += "\ndependencies {\n    implementation platform('com.google.firebase:firebase-bom:35.1.0')\n    implementation 'com.google.firebase:firebase-auth'\n    implementation 'com.google.firebase:firebase-firestore'\n    implementation 'com.google.firebase:firebase-messaging'\n    implementation 'com.google.android.play:app-update:2.1.0'\n    implementation 'androidx.credentials:credentials:1.3.0'\n    implementation 'androidx.credentials:credentials-play-services-auth:1.3.0'\n    implementation 'com.google.android.libraries.identity.googleid:googleid:1.1.1'\n}\n"
           app_gradle.write_text(s)
           Path('android/app/ci-release-signing.gradle').write_text('''android {
               signingConfigs {
@@ -1283,7 +1312,7 @@ jobs:
           assert service.find('property') is not None, 'Foreground service use-case explanation missing'
           with ZipFile('android/app/build/outputs/bundle/release/app-release.aab') as archive:
               dex = [archive.read(n) for n in archive.namelist() if n.startswith('base/dex/') and n.endswith('.dex')]
-              for cls in (b'Lcom/quickspend/app/SmsBridgePlugin;', b'Lcom/quickspend/app/SmsReceiver;', b'Lcom/quickspend/app/FloatingCaptureService;', b'Lcom/quickspend/app/SmsStore;', b'Lcom/quickspend/app/PaymentParser;', b'Lcom/quickspend/app/CaptureMotion;', b'Lcom/quickspend/app/QsLanguage;', b'Lcom/quickspend/app/AccountBridgePlugin;'):
+              for cls in (b'Lcom/quickspend/app/SmsBridgePlugin;', b'Lcom/quickspend/app/SmsReceiver;', b'Lcom/quickspend/app/FloatingCaptureService;', b'Lcom/quickspend/app/SmsStore;', b'Lcom/quickspend/app/PaymentParser;', b'Lcom/quickspend/app/CaptureMotion;', b'Lcom/quickspend/app/QsLanguage;', b'Lcom/quickspend/app/AccountBridgePlugin;', b'Lcom/quickspend/app/UpdateBridgePlugin;', b'Lcom/quickspend/app/UpdateMessagingService;'):
                   assert any(cls in data for data in dex), 'Bundle missing native class: ' + cls.decode()
               for method in ('overlayStatus', 'openOverlaySettings', 'setOverlayEnabled', 'testOverlay', 'setLanguage'):
                   assert any(method.encode() + bytes([0]) in data for data in dex), 'Native floating method missing: ' + method
@@ -1291,7 +1320,7 @@ jobs:
               assert 'base/assets/public/locales/hi.json' in archive.namelist(), 'Hindi translations missing'
               assert 'base/assets/public/assets/quickspend-icon.png' in archive.namelist(), 'Web icon asset missing'
               html = archive.read('base/assets/public/index.html').decode()
-              assert 'nativePromise' in html and 'floating-capture-10' in html, 'Outdated floating-capture HTML bridge'
+              assert 'nativePromise' in html and 'floating-capture-11' in html, 'Outdated floating-capture HTML bridge'
               assert any(n.startswith('META-INF/') and n.upper().endswith(('.RSA', '.DSA', '.EC')) for n in archive.namelist()), 'Bundle has no signing certificate'
           meta = json.loads(Path('release-metadata.json').read_text())
           assert int(root.get(ns + 'versionCode')) == meta['versionCode'], 'Version code mismatch'
