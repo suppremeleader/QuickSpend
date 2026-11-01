@@ -390,5 +390,10 @@
   "Enter a whole number of months from 2 to 1200.": "महीनों की संख्या 2 से 1200 के बीच पूर्ण संख्या में लिखें।",
   "Enter a whole number of months from 0 to 1200.": "महीनों की संख्या 0 से 1200 के बीच पूर्ण संख्या में लिखें।",
   "Enter a name and a positive amount.": "नाम और शून्य से अधिक राशि लिखें।",
-  "The duration cannot be shorter than completed instalments.": "अवधि पूरी हो चुकी किस्तों से कम नहीं हो सकती।"
+  "The duration cannot be shorter than completed instalments.": "अवधि पूरी हो चुकी किस्तों से कम नहीं हो सकती।",
+  "Delete": "हटाएँ",
+  "Delete this entry? Your balance will be updated.": "यह लेन-देन हटाएँ? आपका बैलेंस अपडेट हो जाएगा।",
+  "Accounts": "खाते",
+  "Edit accounts": "खाते संपादित करें",
+  "Add account": "खाता जोड़ें"
 }
