@@ -366,5 +366,7 @@
   "EMI": "किस्तें",
   "Home sections": "होम के भाग",
   "Plan this month and make room for what matters.": "इस महीने का बजट बनाएँ और ज़रूरी चीज़ों के लिए बचत करें।",
-  "Keep every regular payment in one place.": "अपने सभी नियमित भुगतान एक जगह देखें।"
+  "Keep every regular payment in one place.": "अपने सभी नियमित भुगतान एक जगह देखें।",
+  "Android requires this low-priority notification while floating capture runs. It may return after dismissal. Use Status notification to minimise it where your phone allows, or turn off floating capture to remove it.": "फ़्लोटिंग क्विक कैप्चर चलते समय Android को यह कम प्राथमिकता वाली सूचना दिखानी होती है। हटाने के बाद यह फिर आ सकती है। फ़ोन में संभव हो तो इसे कम दिखाने के लिए स्थिति की सूचना खोलें, या इसे हटाने के लिए फ़्लोटिंग कैप्चर बंद करें।",
+  "Required while floating quick capture is running": "फ़्लोटिंग क्विक कैप्चर चालू रहने तक ज़रूरी"
 }

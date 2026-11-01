@@ -765,7 +765,12 @@ jobs:
                   if (foregroundStarted && QsLanguage.get(this).equals(foregroundLanguage)) { updateOverlay(); return START_STICKY; }
                   try {
                       NotificationManager manager = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
-                      if (Build.VERSION.SDK_INT >= 26) manager.createNotificationChannel(new NotificationChannel(CHANNEL, tr("Floating quick capture"), NotificationManager.IMPORTANCE_LOW));
+                      if (Build.VERSION.SDK_INT >= 26) {
+                          NotificationChannel channel = new NotificationChannel(CHANNEL, tr("Floating quick capture"), NotificationManager.IMPORTANCE_LOW);
+                          channel.setDescription(tr("Required while floating quick capture is running"));
+                          channel.setShowBadge(false);
+                          manager.createNotificationChannel(channel);
+                      }
                       Intent launch = getPackageManager().getLaunchIntentForPackage(getPackageName());
                       PendingIntent open = PendingIntent.getActivity(this, 61202, launch, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
                       PendingIntent pause = PendingIntent.getService(this, 61203, new Intent(this, FloatingCaptureService.class).setAction(PAUSE), PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
@@ -774,7 +779,9 @@ jobs:
                           .setContentTitle(tr("QuickSpend quick capture is on"))
                           .setContentText(tr("A floating shortcut appears for bank payments. Tap Pause to stop."))
                           .setContentIntent(open).setOngoing(true).setSilent(true).setOnlyAlertOnce(true)
-                          .setPriority(NotificationCompat.PRIORITY_LOW)
+                          .setPriority(NotificationCompat.PRIORITY_LOW).setLocalOnly(true)
+                          .setVisibility(NotificationCompat.VISIBILITY_SECRET)
+                          .setCategory(NotificationCompat.CATEGORY_SERVICE)
                           .addAction(android.R.drawable.ic_media_pause, tr("Pause"), pause).build();
                       if (Build.VERSION.SDK_INT >= 34) startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE);
                       else startForeground(NOTIFICATION_ID, notification);
