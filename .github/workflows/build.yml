@@ -45,6 +45,7 @@ jobs:
           node tests/budgets.cjs
           node tests/account-layout.cjs
           node tests/account-polish.cjs
+          node tests/home-navigation.cjs
           node tests/update-ui.cjs
           python3 -m unittest discover -s tests -p "test_release_watch.py"
           python3 -m unittest discover -s tests -p "test_manifest_config.py"
@@ -768,7 +769,6 @@ jobs:
                           NotificationChannel channel = new NotificationChannel(CHANNEL, tr("Floating quick capture"), NotificationManager.IMPORTANCE_LOW);
                           channel.setDescription(tr("Required while floating quick capture is running"));
                           channel.setShowBadge(false);
-                          channel.setLockscreenVisibility(Notification.VISIBILITY_SECRET);
                           manager.createNotificationChannel(channel);
                       }
                       Intent launch = getPackageManager().getLaunchIntentForPackage(getPackageName());
@@ -780,6 +780,7 @@ jobs:
                           .setContentText(tr("A floating shortcut appears for bank payments. Tap Pause to stop."))
                           .setContentIntent(open).setOngoing(true).setSilent(true).setOnlyAlertOnce(true)
                           .setPriority(NotificationCompat.PRIORITY_LOW).setLocalOnly(true)
+                          .setVisibility(NotificationCompat.VISIBILITY_SECRET)
                           .setCategory(NotificationCompat.CATEGORY_SERVICE)
                           .addAction(android.R.drawable.ic_media_pause, tr("Pause"), pause).build();
                       if (Build.VERSION.SDK_INT >= 34) startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE);
