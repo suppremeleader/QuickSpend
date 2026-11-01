@@ -44,6 +44,7 @@ jobs:
           node tests/language.cjs
           node tests/budgets.cjs
           node tests/account-layout.cjs
+          node tests/account-polish.cjs
       - uses: actions/setup-java@v5
         with:
           distribution: temurin
@@ -187,7 +188,7 @@ jobs:
               r.put("sms", getPermissionState("sms") == PermissionState.GRANTED);
               r.put("language", QsLanguage.get(getContext()));
               r.put("languageChosen", QsLanguage.chosen(getContext()));
-              r.put("bridgeRevision", "floating-capture-9");
+              r.put("bridgeRevision", "floating-capture-10");
               try {
                 android.content.pm.PackageInfo info = getContext().getPackageManager().getPackageInfo(getContext().getPackageName(), 0);
                 r.put("nativeBuild", Build.VERSION.SDK_INT >= 28 ? info.getLongVersionCode() : info.versionCode);
@@ -235,6 +236,21 @@ jobs:
                 getActivity().startActivity(intent);
                 call.resolve();
               } catch (Exception e) { call.reject("Could not open notification settings", e); }
+            }
+
+            @PluginMethod
+            public void openCaptureNotificationSettings(PluginCall call) {
+              getActivity().runOnUiThread(() -> {
+                try {
+                  Intent intent;
+                  if (Build.VERSION.SDK_INT >= 26) {
+                    intent = new Intent(Settings.ACTION_CHANNEL_NOTIFICATION_SETTINGS);
+                    intent.putExtra(Settings.EXTRA_APP_PACKAGE,getContext().getPackageName());
+                    intent.putExtra(Settings.EXTRA_CHANNEL_ID,"qs_capture_service");
+                  } else intent = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,Uri.parse("package:"+getContext().getPackageName()));
+                  getActivity().startActivity(intent);call.resolve();
+                } catch (Exception e) { call.reject("Could not open notification settings",e); }
+              });
             }
 
             @PluginMethod
@@ -681,6 +697,8 @@ jobs:
               private boolean dismissingBubble;
               private WindowManager.LayoutParams bubbleParams;
               private boolean hiddenUntilNextPayment;
+              private boolean foregroundStarted;
+              private String foregroundLanguage="";
               private String panelKey;
               private BroadcastReceiver screenReceiver;
               private static final int BG = Color.rgb(21, 21, 27), FG = Color.rgb(244, 244, 246), MUTED = Color.rgb(154, 154, 169), ACCENT = Color.rgb(201, 243, 107);
@@ -735,6 +753,7 @@ jobs:
                       stopSelf();
                       return START_NOT_STICKY;
                   }
+                  if (foregroundStarted && QsLanguage.get(this).equals(foregroundLanguage)) { updateOverlay(); return START_STICKY; }
                   try {
                       NotificationManager manager = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
                       if (Build.VERSION.SDK_INT >= 26) manager.createNotificationChannel(new NotificationChannel(CHANNEL, tr("Floating quick capture"), NotificationManager.IMPORTANCE_LOW));
@@ -743,13 +762,14 @@ jobs:
                       PendingIntent pause = PendingIntent.getService(this, 61203, new Intent(this, FloatingCaptureService.class).setAction(PAUSE), PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
                       Notification notification = new NotificationCompat.Builder(this, CHANNEL)
                           .setSmallIcon(R.drawable.ic_qs_notification)
-                          .setContentTitle("QuickSpend quick capture is on")
-                          .setContentText("A floating shortcut appears for bank payments. Tap Pause to stop.")
-                          .setContentIntent(open).setOngoing(true).setSilent(true)
+                          .setContentTitle(tr("QuickSpend quick capture is on"))
+                          .setContentText(tr("A floating shortcut appears for bank payments. Tap Pause to stop."))
+                          .setContentIntent(open).setOngoing(true).setSilent(true).setOnlyAlertOnce(true)
                           .setPriority(NotificationCompat.PRIORITY_LOW)
                           .addAction(android.R.drawable.ic_media_pause, tr("Pause"), pause).build();
                       if (Build.VERSION.SDK_INT >= 34) startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE);
                       else startForeground(NOTIFICATION_ID, notification);
+                      foregroundStarted=true;foregroundLanguage=QsLanguage.get(this);
                       lastError = "";
                       updateOverlay();
                       return START_STICKY;
@@ -1271,7 +1291,7 @@ jobs:
               assert 'base/assets/public/locales/hi.json' in archive.namelist(), 'Hindi translations missing'
               assert 'base/assets/public/assets/quickspend-icon.png' in archive.namelist(), 'Web icon asset missing'
               html = archive.read('base/assets/public/index.html').decode()
-              assert 'nativePromise' in html and 'floating-capture-9' in html, 'Outdated floating-capture HTML bridge'
+              assert 'nativePromise' in html and 'floating-capture-10' in html, 'Outdated floating-capture HTML bridge'
               assert any(n.startswith('META-INF/') and n.upper().endswith(('.RSA', '.DSA', '.EC')) for n in archive.namelist()), 'Bundle has no signing certificate'
           meta = json.loads(Path('release-metadata.json').read_text())
           assert int(root.get(ns + 'versionCode')) == meta['versionCode'], 'Version code mismatch'

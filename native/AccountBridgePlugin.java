@@ -111,13 +111,21 @@ public class AccountBridgePlugin extends Plugin {
         return user.getUid();
     }
     private DocumentReference backup(String uid){return database.collection("users").document(uid).collection("backups").document("latest");}
+    private void cloudFailure(PluginCall call, Exception error, String fallback) {
+        if (error instanceof FirebaseFirestoreException) {
+            FirebaseFirestoreException.Code code=((FirebaseFirestoreException)error).getCode();
+            if (code==FirebaseFirestoreException.Code.PERMISSION_DENIED) { call.reject("Cloud saving needs setup. Your records are safe on this phone.","CLOUD_PERMISSION_DENIED",error);return; }
+            if (code==FirebaseFirestoreException.Code.NOT_FOUND) { call.reject("Cloud saving needs setup. Your records are safe on this phone.","CLOUD_NOT_READY",error);return; }
+        }
+        call.reject(fallback,"CLOUD_UNAVAILABLE",error);
+    }
     @PluginMethod public void download(PluginCall call) {
         String uid=user(call);if(uid==null)return;
         backup(uid).get(Source.SERVER).addOnSuccessListener(document->{
             if(auth.getCurrentUser()==null||!uid.equals(auth.getCurrentUser().getUid())){call.reject("Your account changed. Please try again.");return;}
             JSObject result=new JSObject();result.put("exists",document.exists());result.put("revision",document.exists()?document.getLong("revision"):0);
             if(document.exists())result.put("payload",document.getString("payload"));call.resolve(result);
-        }).addOnFailureListener(error->call.reject("Could not read your cloud backup. Check your connection and try again."));
+        }).addOnFailureListener(error->cloudFailure(call,error,"Could not read your cloud backup. Check your connection and try again."));
     }
     @PluginMethod public void upload(PluginCall call) {
         String uid=user(call);if(uid==null)return;
@@ -132,6 +140,6 @@ public class AccountBridgePlugin extends Plugin {
             if(revision==null||revision!=expected)throw new FirebaseFirestoreException("Cloud backup changed.",FirebaseFirestoreException.Code.FAILED_PRECONDITION);
             Map<String,Object> data=new HashMap<>();data.put("payload",payload);data.put("revision",expected+1);data.put("updatedAt",FieldValue.serverTimestamp());transaction.set(reference,data);return expected+1;
         }).addOnSuccessListener(revision->{JSObject result=new JSObject();result.put("revision",revision);call.resolve(result);})
-          .addOnFailureListener(error->{if(error instanceof FirebaseFirestoreException&&((FirebaseFirestoreException)error).getCode()==FirebaseFirestoreException.Code.FAILED_PRECONDITION)call.reject("Cloud backup changed on another device. Restore it before saving.");else call.reject("Cloud save failed. Check your connection and try again.");});
+          .addOnFailureListener(error->{if(error instanceof FirebaseFirestoreException&&((FirebaseFirestoreException)error).getCode()==FirebaseFirestoreException.Code.FAILED_PRECONDITION)call.reject("Cloud backup changed on another device. Restore it before saving.");else cloudFailure(call,error,"Cloud save failed. Check your connection and try again.");});
     }
 }
