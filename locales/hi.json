@@ -338,6 +338,7 @@
   "Add rent, a loan instalment or a regular payment.": "किराया, लोन की किस्त या नियमित भुगतान जोड़ें।",
   "Status notification": "स्थिति की सूचना",
   "Android shows a status notification while capture is running. You can change its visibility here without turning off payment alerts.": "क्विक कैप्चर चालू रहने पर Android स्थिति की सूचना दिखाता है। भुगतान की सूचनाएँ बंद किए बिना इसे यहाँ बदल सकते हैं।",
+  "Android requires this low-priority notification while floating capture runs. It may return after dismissal. Use Status notification to minimise it where your phone allows, or turn off floating capture to remove it.": "फ़्लोटिंग क्विक कैप्चर चलते समय Android को यह कम प्राथमिकता वाली सूचना दिखानी होती है। हटाने के बाद यह फिर आ सकती है। फ़ोन में संभव हो तो इसे कम दिखाने के लिए स्थिति की सूचना खोलें, या इसे हटाने के लिए फ़्लोटिंग कैप्चर बंद करें।",
   "App updates": "ऐप अपडेट",
   "Check for updates and manage alerts": "अपडेट जाँचें और सूचनाएँ बदलें",
   "Get notified when a new version is published.": "नया संस्करण आने पर सूचना पाएँ।",
