@@ -45,6 +45,7 @@ jobs:
           node tests/budgets.cjs
           node tests/account-layout.cjs
           node tests/account-polish.cjs
+          node tests/home-navigation.cjs
           node tests/update-ui.cjs
           python3 -m unittest discover -s tests -p "test_release_watch.py"
           python3 -m unittest discover -s tests -p "test_manifest_config.py"
