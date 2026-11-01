@@ -1,6 +1,7 @@
 import importlib.util
 from pathlib import Path
 import unittest
+from unittest.mock import patch
 spec = importlib.util.spec_from_file_location('watch', Path(__file__).resolve().parents[1] / 'scripts/release_watch.py')
 watch = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(watch)
@@ -48,6 +49,24 @@ class ReleaseWatcherTest(unittest.TestCase):
             updated, version = watch.decision(state, version, 1000)
             self.assertIsNone(version)
             self.assertIsNone(updated['candidate'])
+
+    def test_validation_never_delivers_or_writes_state(self):
+        for track in ({'releases': []}, {'releases': [{'status': 'completed', 'versionCodes': ['101']}]}):
+            with patch.object(watch, 'completed_track', return_value=track) as read, patch.object(watch, 'http_json') as request, patch.object(watch, 'GithubState') as state:
+                watch.validate_access('test-token', 'test-project')
+                read.assert_called_once_with('test-token')
+                request.assert_called_once()
+                args = request.call_args.args
+                self.assertEqual(args[0], 'POST')
+                self.assertEqual(args[1], 'https://fcm.googleapis.com/v1/projects/test-project/messages:send')
+                self.assertIs(args[3]['validate_only'], True)
+                self.assertEqual(args[3]['message']['topic'], watch.TOPIC)
+                state.assert_not_called()
+
+    def test_disabled_watcher_makes_no_network_calls(self):
+        with patch.dict(watch.os.environ, {'UPDATE_ALERTS_ENABLED': '', 'UPDATE_ALERTS_VALIDATE_ONLY': ''}), patch.object(watch, 'http_json') as request:
+            watch.main()
+            request.assert_not_called()
 
     def test_no_financial_data_or_url_in_push(self):
         message = watch.update_message(101)['message']

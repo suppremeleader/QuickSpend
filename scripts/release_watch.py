@@ -151,8 +151,20 @@ class GithubState:
         self.sha = result['content']['sha']
 
 
+def validate_access(google_token, project):
+    # Read and discard the same Play snapshot used by the watcher. Do not touch
+    # notification state, initialise a baseline, or deliver any message.
+    version = latest_completed(completed_track(google_token))
+    message = update_message(version or 1)
+    message['validate_only'] = True
+    http_json('POST', f'https://fcm.googleapis.com/v1/projects/{project}/messages:send',
+              google_token, message)
+    print('PASS: Play track access and FCM request validation. No notification delivered; release state unchanged.')
+
+
 def main():
-    if os.environ.get('UPDATE_ALERTS_ENABLED') != 'true':
+    validation = os.environ.get('UPDATE_ALERTS_VALIDATE_ONLY') == 'true'
+    if not validation and os.environ.get('UPDATE_ALERTS_ENABLED') != 'true':
         print('Release alerts are disabled; no network actions performed.')
         return
     if os.environ.get('GITHUB_REPOSITORY') != REPOSITORY:
@@ -168,6 +180,9 @@ def main():
         'https://www.googleapis.com/auth/firebase.messaging'])
     credentials.refresh(Request())
     token = credentials.token
+    if validation:
+        validate_access(token, project)
+        return
     state = GithubState(os.environ['GH_TOKEN'])
     version = latest_completed(completed_track(token))
     announced = process(state.load(), version, int(time.time()),

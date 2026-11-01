@@ -44,3 +44,9 @@ Only the service identity and WIF provider resource names belong in these variab
 Local JS and Python checks cover optional prompt behaviour, blocked UI states, cancellation, restart, opt-out, release filtering, baseline behaviour, propagation delay, failed sends and deduplication. Java source syntax is checked locally; pure Java policy tests are wired into the next normal Android build. No new Android build or live push was started for this preparation.
 
 Before enabling the watcher, test the client from Google Play with a higher version on the same eligible internal track. Verify notification delivery with the app closed, notification permissions off, update alerts off, the same notification delivered twice, and an already-updated device. Validate Play access and FCM authorization using the dedicated identity. Backend setup and end-to-end Play/FCM behaviour remain unverified.
+
+## Authorization check without delivery
+
+After this workflow is merged into main, open GitHub Actions → Notify published internal updates → Run workflow. Keep `validate_only` checked (the default) and select main. This mode works while `UPDATE_ALERTS_ENABLED` remains unset. It reads and deletes an uncommitted Play edit snapshot and asks FCM to validate a message with `validate_only: true`. It never delivers a notification, creates notification state, or changes the baseline. It checks API authorization, not phone delivery. A 403 from Play requires investigating the app permission; do not grant account-wide release access.
+
+The WIF provider intentionally trusts only this exact workflow on main. A feature-branch run is blocked. Merging the app feature into main also triggers the existing Android build; obtain approval for that build before merging. The Google setup reported by the operator must still pass the authorization check; no live authorization result is claimed here.

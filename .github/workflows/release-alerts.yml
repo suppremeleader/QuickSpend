@@ -3,6 +3,12 @@ on:
   schedule:
     - cron: '7,22,37,52 * * * *'
   workflow_dispatch:
+    inputs:
+      validate_only:
+        description: 'Check Google authorization without sending notifications'
+        type: boolean
+        default: true
+        required: true
 permissions:
   contents: write
   id-token: write
@@ -11,7 +17,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   notify:
-    if: ${{ vars.UPDATE_ALERTS_ENABLED == 'true' }}
+    if: ${{ github.ref == 'refs/heads/main' && (vars.UPDATE_ALERTS_ENABLED == 'true' || (github.event_name == 'workflow_dispatch' && inputs.validate_only)) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
@@ -28,8 +34,9 @@ jobs:
           service_account: ${{ vars.UPDATE_ALERTS_SERVICE_ACCOUNT }}
       - name: Install Google authorization support
         run: python3 -m pip install 'google-auth[requests]>=2.38,<3'
-      - name: Notify only newly published releases
+      - name: Validate access or notify newly published releases
         env:
+          UPDATE_ALERTS_VALIDATE_ONLY: ${{ github.event_name == 'workflow_dispatch' && inputs.validate_only }}
           GH_TOKEN: ${{ github.token }}
           UPDATE_ALERTS_ENABLED: ${{ vars.UPDATE_ALERTS_ENABLED }}
         run: python3 scripts/release_watch.py
