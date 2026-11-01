@@ -1,5 +1,10 @@
 name: Notify published internal updates
 on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/release-alerts.yml'
+      - 'scripts/release_watch.py'
   schedule:
     - cron: '7,22,37,52 * * * *'
   workflow_dispatch:
@@ -17,7 +22,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   notify:
-    if: ${{ github.ref == 'refs/heads/main' && (vars.UPDATE_ALERTS_ENABLED == 'true' || (github.event_name == 'workflow_dispatch' && inputs.validate_only)) }}
+    if: ${{ github.ref == 'refs/heads/main' && (github.event_name == 'push' || vars.UPDATE_ALERTS_ENABLED == 'true' || (github.event_name == 'workflow_dispatch' && inputs.validate_only)) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
@@ -36,7 +41,7 @@ jobs:
         run: python3 -m pip install 'google-auth[requests]>=2.38,<3'
       - name: Validate access or notify newly published releases
         env:
-          UPDATE_ALERTS_VALIDATE_ONLY: ${{ github.event_name == 'workflow_dispatch' && inputs.validate_only }}
+          UPDATE_ALERTS_VALIDATE_ONLY: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.validate_only) }}
           GH_TOKEN: ${{ github.token }}
           UPDATE_ALERTS_ENABLED: ${{ vars.UPDATE_ALERTS_ENABLED }}
         run: python3 scripts/release_watch.py
