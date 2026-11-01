@@ -362,5 +362,9 @@
   "The update is ready. Tap Restart to install.": "अपडेट तैयार है। इंस्टॉल करने के लिए फिर शुरू करें दबाएँ।",
   "Could not start the update. Try Google Play.": "अपडेट शुरू नहीं हो सका। Google Play में कोशिश करें।",
   "Could not install the update. Try Google Play.": "अपडेट इंस्टॉल नहीं हुआ। Google Play में कोशिश करें।",
-  "Could not open Google Play": "Google Play नहीं खुल सका"
+  "Could not open Google Play": "Google Play नहीं खुल सका",
+  "EMI": "किस्तें",
+  "Home sections": "होम के भाग",
+  "Plan this month and make room for what matters.": "इस महीने का बजट बनाएँ और ज़रूरी चीज़ों के लिए बचत करें।",
+  "Keep every regular payment in one place.": "अपने सभी नियमित भुगतान एक जगह देखें।"
 }
