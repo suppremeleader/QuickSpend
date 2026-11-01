@@ -1,0 +1,20 @@
+const assert=require('assert');const{app,settle}=require('./app-inbox.cjs');
+(async()=>{
+ const a=app({savedLanguage:'en'});await settle();
+ a.eval("tx=[];recur=[{t:'Income',m:'Salary',a:10000,day:1,left:-1,last:0,acc:'Main account'},{t:'Expense',m:'Rent',a:2000,day:1,left:-1,last:0,acc:'Main account'},{t:'Expense',m:'Car EMI',a:500,day:1,left:3,last:0,acc:'Main account'}];runRecur()");
+ assert.equal(a.eval("T().filter(x=>x.t==='Income').reduce((s,x)=>s+x.a,0)"),10000,'Recurring salary stays in income');
+ assert.equal(a.eval("T().filter(x=>x.t==='Expense').reduce((s,x)=>s+x.a,0)"),2000,'Ongoing rent stays in spending');
+ assert.equal(a.eval("tx.find(x=>x.m==='Car EMI').emi"),true);
+ assert.equal(a.eval("budgetSummary(new Date().getFullYear()+'-'+String(new Date().getMonth()+1).padStart(2,'0')).totalSpent"),2000,'Scheduled EMI does not consume the spending budget');
+ assert.equal(a.eval('emiBalance()'),1000,'Only two remaining car instalments count; salary and rent are excluded');
+ assert.equal(a.eval('emiOutstanding({t:"Expense",a:500,left:0})'),0);
+ assert.equal(a.eval('JSON.stringify(safeCloudData().tx.map(x=>x.emi))'),JSON.stringify([false,false,true]),'Backup retains EMI transaction flags');
+ assert.equal(a.eval('safeCloudData().recur.length'),3);
+ assert.ok(!a.c.emiList().includes('Rent'),'Ongoing rent is not displayed as a loan');
+ const count=a.eval("[new Date().getFullYear(),new Date().getFullYear()+1,new Date().getFullYear()+2].flatMap(y=>emiSchedule(recur[2],y)).filter(x=>x!==null).length");assert.equal(count,2,'Schedule stops after remaining instalments');
+ a.eval("recur[2].left=0");assert.match(a.c.emiList(),/Completed/);assert.equal(a.eval('emiSchedule(recur[2],new Date().getFullYear()+1).filter(x=>x!==null).length'),0);
+ a.eval("recur[2].emi=true");assert.equal(a.eval('safeCloudData().recur[2].emi'),true,'Backup retains plan identity');
+ await a.c.chooseLanguage('hi');a.eval("homePage='emi';render()");const screen=a.nodes.get('#s-home').innerHTML;assert.match(screen,/कुल बाकी किस्तें/);assert.match(screen,/बाकी तय किस्तें/);assert.ok(!screen.includes('Swipe to view account balance'));
+ a.eval("cloud.account={uid:'test',name:'Updated Name',email:'test@example.test'};paintAccountStatus()");assert.equal(a.nodes.get('#profile-name').textContent,'Updated Name','Profile updates when account changes');
+ console.log('PASS: recurring salary/rent retained, finite EMI isolation, bounded schedule, completion and cloud flag preservation');
+})().catch(e=>{console.error(e);process.exit(1)});

@@ -331,7 +331,7 @@
   "Every instalment. In one place.": "हर किस्त का हिसाब। एक जगह।",
   "Add a plan": "योजना जोड़ें",
   "Day": "तारीख",
-  "Completed": "पूरा हो गया",
+  "Completed": "पूरी हो गई",
   "instalments left": "किस्तें बाकी",
   "Repeats monthly": "हर महीने दोहरता है",
   "Remove": "हटाएँ",
@@ -369,5 +369,16 @@
   "Plan this month and make room for what matters.": "इस महीने का बजट बनाएँ और ज़रूरी चीज़ों के लिए बचत करें।",
   "Keep every regular payment in one place.": "अपने सभी नियमित भुगतान एक जगह देखें।",
   "Android requires this low-priority notification while floating capture runs. It may return after dismissal. Use Status notification to minimise it where your phone allows, or turn off floating capture to remove it.": "फ़्लोटिंग क्विक कैप्चर चलते समय Android को यह कम प्राथमिकता वाली सूचना दिखानी होती है। हटाने के बाद यह फिर आ सकती है। फ़ोन में संभव हो तो इसे कम दिखाने के लिए स्थिति की सूचना खोलें, या इसे हटाने के लिए फ़्लोटिंग कैप्चर बंद करें।",
-  "Required while floating quick capture is running": "फ़्लोटिंग क्विक कैप्चर चालू रहने तक ज़रूरी"
+  "Required while floating quick capture is running": "फ़्लोटिंग क्विक कैप्चर चालू रहने तक ज़रूरी",
+  "Your profile": "आपकी प्रोफ़ाइल",
+  "Welcome back": "फिर से स्वागत है",
+  "EMI and account balances": "किस्तों और खाते की शेष राशि",
+  "Total EMI": "कुल बाकी किस्तें",
+  "Swipe to view account balance": "खाते की शेष राशि देखने के लिए स्वाइप करें",
+  "All instalments stay separate from your account balance.": "किस्तों का हिसाब आपके खाते की शेष राशि से अलग है।",
+  "All EMI transactions": "सभी किस्तों की योजनाएँ",
+  "Previous year": "पिछला साल",
+  "Next year": "अगला साल",
+  "Add a plan to see its instalment schedule.": "किस्तों की समय-सारणी देखने के लिए योजना जोड़ें।",
+  "Remaining scheduled instalments": "बाकी तय किस्तें"
 }
