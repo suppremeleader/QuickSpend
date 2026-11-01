@@ -380,5 +380,15 @@
   "Previous year": "पिछला साल",
   "Next year": "अगला साल",
   "Add a plan to see its instalment schedule.": "किस्तों की समय-सारणी देखने के लिए योजना जोड़ें।",
-  "Remaining scheduled instalments": "बाकी तय किस्तें"
+  "Remaining scheduled instalments": "बाकी तय किस्तें",
+  "Edit": "बदलें",
+  "Set a monthly budget to see categories here.": "यहाँ श्रेणियाँ देखने के लिए मासिक बजट बनाएँ।",
+  "You will complete this EMI in": "आपकी यह किस्त पूरी होगी",
+  "Keep going—you are getting closer!": "आगे बढ़ते रहें—आप लक्ष्य के करीब हैं!",
+  "This is the total EMI amount. Monthly instalments are calculated automatically.": "यह किस्त की कुल राशि है। मासिक किस्त अपने आप निकाली जाएगी।",
+  "Interest is not calculated. The final instalment includes rounding.": "ब्याज की गणना नहीं होती। अंतिम किस्त में पैसे का बाकी अंतर जोड़ा जाता है।",
+  "Enter a whole number of months from 2 to 1200.": "महीनों की संख्या 2 से 1200 के बीच पूर्ण संख्या में लिखें।",
+  "Enter a whole number of months from 0 to 1200.": "महीनों की संख्या 0 से 1200 के बीच पूर्ण संख्या में लिखें।",
+  "Enter a name and a positive amount.": "नाम और शून्य से अधिक राशि लिखें।",
+  "The duration cannot be shorter than completed instalments.": "अवधि पूरी हो चुकी किस्तों से कम नहीं हो सकती।"
 }
