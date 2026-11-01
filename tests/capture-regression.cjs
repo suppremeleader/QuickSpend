@@ -1,11 +1,11 @@
 const fs=require('fs'),vm=require('vm'),assert=require('assert');
 const html=fs.readFileSync(require('path').join(__dirname,'../index.html'),'utf8');
-const importer=html.slice(html.indexOf('let pullingNative=false;'),html.indexOf('function openFloatingSettings()'));
+const importer=html.slice(html.indexOf('function deletedSource('),html.indexOf('function deletionKeys('))+html.slice(html.indexOf('let pullingNative=false;'),html.indexOf('function openFloatingSettings()'));
 function setup(snapshot,{storageWorks=true}={}){
  const seen=new Set(),nativePending=JSON.parse(JSON.stringify(snapshot.items||[])),nativeSaved=JSON.parse(JSON.stringify(snapshot.entries||[]));let acknowledged=[],completed=[],writes=0;
  const nodes={};const node=()=>({classList:{add(){},contains:()=>false}});
  const P={drain:async()=>({items:nativePending,entries:nativeSaved}),acknowledgeSaved:async({keys})=>{acknowledged.push(...keys);for(let i=nativeSaved.length-1;i>=0;i--)if(keys.includes(nativeSaved[i].nativeKey))nativeSaved.splice(i,1)},completeSms:async({sourceKey})=>{completed.push(sourceKey);for(let i=nativePending.length-1;i>=0;i--)if(nativePending[i].sourceKey===sourceKey)nativePending.splice(i,1)}};
- const context={language:'en',L:x=>x,SB:()=>P,tx:[],pending:[],speed:[],smsSeen:[],cur:{},sid:200,accts:[{n:'Main account',i:'🏦'}],CATS:{Expense:[['','Food'],['','Travel']],Income:[['','Salary']],Lent:[['','Friend']],Borrowed:[['','Family']]},parseSms:(from,body)=>/invalid/.test(body)?null:{m:'Shop',a:100,kind:'Expense',acc:'HDFC 1234'},fd:()=> '31 Oct',closeSheet(){},render(){},persist:()=>{writes++;return storageWorks},$:s=>nodes[s]||(nodes[s]=node()),openSheet(){},console:{warn(){}}};
+ const context={language:'en',L:x=>x,SB:()=>P,tx:[],pending:[],speed:[],smsSeen:[],deletedSources:[],cur:{},sid:200,accts:[{n:'Main account',i:'🏦'}],CATS:{Expense:[['','Food'],['','Travel']],Income:[['','Salary']],Lent:[['','Friend']],Borrowed:[['','Family']]},parseSms:(from,body)=>/invalid/.test(body)?null:{m:'Shop',a:100,kind:'Expense',acc:'HDFC 1234'},fd:()=> '31 Oct',closeSheet(){},render(){},persist:()=>{writes++;return storageWorks},$:s=>nodes[s]||(nodes[s]=node()),openSheet(){},console:{warn(){}}};
  vm.createContext(context);vm.runInContext(importer,context);
  return {c:context,nativeSaved,nativePending,acknowledged,completed,get writes(){return writes}};
 }

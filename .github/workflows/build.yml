@@ -46,6 +46,7 @@ jobs:
           node tests/account-layout.cjs
           node tests/account-polish.cjs
           node tests/emi-regression.cjs
+          node tests/accounts-delete.cjs
           node tests/home-navigation.cjs
           node tests/update-ui.cjs
           python3 -m unittest discover -s tests -p "test_release_watch.py"
