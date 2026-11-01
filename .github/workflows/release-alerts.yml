@@ -1,0 +1,47 @@
+name: Notify published internal updates
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/release-alerts.yml'
+      - 'scripts/release_watch.py'
+  schedule:
+    - cron: '7,22,37,52 * * * *'
+  workflow_dispatch:
+    inputs:
+      validate_only:
+        description: 'Check Google authorization without sending notifications'
+        type: boolean
+        default: true
+        required: true
+permissions:
+  contents: write
+  id-token: write
+concurrency:
+  group: quickspend-internal-release-alerts
+  cancel-in-progress: false
+jobs:
+  notify:
+    if: ${{ github.ref == 'refs/heads/main' && (github.event_name == 'push' || vars.UPDATE_ALERTS_ENABLED == 'true' || (github.event_name == 'workflow_dispatch' && inputs.validate_only)) }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Validate release watcher
+        run: python3 -m unittest discover -s tests -p 'test_release_watch.py'
+      - name: Authenticate with Google
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ vars.UPDATE_ALERTS_WIF_PROVIDER }}
+          service_account: ${{ vars.UPDATE_ALERTS_SERVICE_ACCOUNT }}
+      - name: Install Google authorization support
+        run: python3 -m pip install 'google-auth[requests]>=2.38,<3'
+      - name: Validate access or notify newly published releases
+        env:
+          UPDATE_ALERTS_VALIDATE_ONLY: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.validate_only) }}
+          GH_TOKEN: ${{ github.token }}
+          UPDATE_ALERTS_ENABLED: ${{ vars.UPDATE_ALERTS_ENABLED }}
+        run: python3 scripts/release_watch.py
