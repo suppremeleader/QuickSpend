@@ -53,6 +53,7 @@ jobs:
           node tests/accounts-delete.cjs
           node tests/home-navigation.cjs
           node tests/update-ui.cjs
+          node tests/quick-access.cjs
           python3 -m unittest discover -s tests -p "test_release_watch.py"
           python3 -m unittest discover -s tests -p "test_manifest_config.py"
       - uses: actions/setup-java@v5
@@ -67,6 +68,8 @@ jobs:
           java -cp /tmp/qs-motion CaptureMotionTest
           javac -d /tmp/qs-motion native/UpdatePolicy.java tests/UpdatePolicyTest.java
           java -cp /tmp/qs-motion UpdatePolicyTest
+          javac -d /tmp/qs-motion native/QuickAccessPolicy.java tests/QuickAccessPolicyTest.java
+          java -cp /tmp/qs-motion QuickAccessPolicyTest
       - uses: android-actions/setup-android@v3
         with:
           packages: platform-tools
@@ -90,7 +93,7 @@ jobs:
           if [ ! -d android ]; then npx cap add android; fi
           D=android/app/src/main/java/com/quickspend/app
           mkdir -p $D
-          cp native/CaptureCatalog.java native/QsLanguage.java native/AccountBridgePlugin.java native/UpdatePolicy.java native/UpdatePush.java native/UpdateMessagingService.java native/UpdateBridgePlugin.java $D/
+          cp native/CaptureCatalog.java native/QuickAccessConfig.java native/QuickAccessPolicy.java native/QuickAccessOverlay.java native/QsLanguage.java native/AccountBridgePlugin.java native/UpdatePolicy.java native/UpdatePush.java native/UpdateMessagingService.java native/UpdateBridgePlugin.java $D/
           if [ -s config/google-services.json ]; then
             mkdir -p android/app/src/main/assets/cloud
             cp config/google-services.json android/app/src/main/assets/cloud/
@@ -363,6 +366,14 @@ jobs:
               });
             }
 
+            @PluginMethod public void quickAccessSettings(PluginCall call) {
+                try { JSObject result=new JSObject(); result.put("payload",QuickAccessConfig.read(getContext()).toString()); call.resolve(result); }
+                catch(Exception e){call.reject("Could not load Quick Access",e);}
+            }
+            @PluginMethod public void setQuickAccessSettings(PluginCall call) {
+                try { QuickAccessConfig.save(getContext(),new org.json.JSONObject(call.getString("payload","{}"))); FloatingCaptureService.refresh(getContext(),false); call.resolve(); }
+                catch(Exception e){call.reject("Could not save Quick Access",e);}
+            }
             @PluginMethod
             public void overlayStatus(PluginCall call) {
               JSObject result = new JSObject();
@@ -724,6 +735,9 @@ jobs:
               private View bubble;
               private LinearLayout panel;
               private TetherView tether;
+              private QuickAccessOverlay quickLayer;
+              private JSONObject quickItem;
+              private PaymentParser quickPayment;
               private ValueAnimator bubbleMotion;
               private boolean dismissingBubble;
               private WindowManager.LayoutParams bubbleParams;
@@ -926,44 +940,50 @@ jobs:
                   bubbleParams.y = Math.max(dp(24), Math.min(p.getInt("y", dp(220)), screen.heightPixels - dp(100)));
                   container.setOnClickListener(view -> { List<JSONObject> q = payments(); if (!q.isEmpty()) showPanel(q.get(0)); });
                   container.setOnTouchListener(new View.OnTouchListener() {
-                      float downX, downY, distance, dragX, dragY; int oldX, oldY; long downTime; boolean moved;
+                      float downX, downY, distance, dragX, dragY; int oldX, oldY; long downTime; boolean moved, experimental, quickGesture, touching;
+                      final Runnable hold = () -> { if(touching && !moved && bubble==container && QuickAccessConfig.enabled(FloatingCaptureService.this)) quickGesture=beginQuickAccess(); };
                       @Override public boolean onTouch(View view, MotionEvent event) {
                           if (dismissingBubble) return true;
                           if (event.getActionMasked() == MotionEvent.ACTION_DOWN) {
                               if (dismissingBubble) return true;
                               if (bubbleMotion != null) { bubbleMotion.cancel(); bubbleMotion=null; }
                               view.animate().cancel(); view.setScaleX(1); view.setScaleY(1); view.setAlpha(1);
+                              hideQuickAccess(); touching=true;quickGesture=false;experimental=QuickAccessConfig.enabled(FloatingCaptureService.this);
+                              if(experimental) main.postDelayed(hold,QuickAccessPolicy.HOLD_MS);
                               distance=0; dragX=0; dragY=0;
                               downX = event.getRawX(); downY = event.getRawY(); oldX = bubbleParams.x; oldY = bubbleParams.y; moved = false; downTime = event.getEventTime(); return true;
                           }
                           if (event.getActionMasked() == MotionEvent.ACTION_MOVE) {
                               float dx = event.getRawX() - downX, dy = event.getRawY() - downY;
                               dragX=dx; dragY=dy; distance=(float)Math.hypot(dx, dy);
-                              if (!moved && distance > ViewConfiguration.get(FloatingCaptureService.this).getScaledTouchSlop()) { moved=true; if (motionEnabled()) showTether(oldX+dp(30), oldY+dp(30)); }
+                              if (!moved && distance > ViewConfiguration.get(FloatingCaptureService.this).getScaledTouchSlop()) { moved=true; main.removeCallbacks(hold); if (!experimental && motionEnabled()) showTether(oldX+dp(30), oldY+dp(30)); }
                               if (moved) {
                                   DisplayMetrics screen = display();
-                                  bubbleParams.x = Math.max(0, Math.min(oldX + Math.round(dx * 0.62f), screen.widthPixels - dp(60)));
-                                  bubbleParams.y = Math.max(dp(24), Math.min(oldY + Math.round(dy * 0.62f), screen.heightPixels - dp(100)));
+                                  bubbleParams.x = Math.max(0, Math.min(oldX + Math.round(dx * (quickGesture?1f:0.62f)), screen.widthPixels - dp(60)));
+                                  bubbleParams.y = Math.max(dp(24), Math.min(oldY + Math.round(dy * (quickGesture?1f:0.62f)), screen.heightPixels - dp(100)));
                                   if (tether != null) { tether.endX=bubbleParams.x+dp(30); tether.endY=bubbleParams.y+dp(30); tether.invalidate(); }
                                   try { windows.updateViewLayout(view, bubbleParams); } catch (RuntimeException ignored) { }
                               }
+                              if(quickGesture) updateQuickAccess(event.getRawX(),event.getRawY(),moved);
                               return true;
                           }
                           if (event.getActionMasked() == MotionEvent.ACTION_UP) {
+                              touching=false;main.removeCallbacks(hold);
+                              if(quickGesture){finishQuickAccess(event,event.getEventTime()-downTime,distance,oldX,oldY);return true;}
                               hideTether(); view.setScaleX(1); view.setScaleY(1);
                               if (moved) {
                                   DisplayMetrics screen=display();
-                                  if (distance >= dp(104)) {
+                                  if (!experimental && distance >= dp(104)) {
                                       float[] exit=CaptureMotion.exit(bubbleParams.x, bubbleParams.y, dragX, dragY, screen.widthPixels, screen.heightPixels, dp(70));
                                       animateBubble(Math.round(exit[0]), Math.round(exit[1]), true);
                                   }
                                   else animateBubble(bubbleParams.x+dp(30) < screen.widthPixels/2 ? dp(6) : screen.widthPixels-dp(66), bubbleParams.y, false);
                               }
-                              else if (event.getEventTime() - downTime > 650) { hiddenUntilNextPayment = true; hideAll(); Toast.makeText(FloatingCaptureService.this, tr("Shortcut hidden. Payments stay in Review."), Toast.LENGTH_SHORT).show(); }
-                              else view.performClick();
+                              else if (!experimental && event.getEventTime() - downTime > 650) { hiddenUntilNextPayment = true; hideAll(); Toast.makeText(FloatingCaptureService.this, tr("Shortcut hidden. Payments stay in Review."), Toast.LENGTH_SHORT).show(); }
+                              else if(!experimental || event.getEventTime()-downTime<QuickAccessPolicy.HOLD_MS) view.performClick();
                               return true;
                           }
-                          if (event.getActionMasked() == MotionEvent.ACTION_CANCEL) { hideTether(); view.setScaleX(1); view.setScaleY(1); animateBubble(oldX, oldY, false); return true; }
+                          if ((event.getActionMasked() == MotionEvent.ACTION_CANCEL || event.getActionMasked() == MotionEvent.ACTION_POINTER_DOWN)) { touching=false;main.removeCallbacks(hold);hideQuickAccess(); hideTether(); view.setScaleX(1); view.setScaleY(1); animateBubble(oldX, oldY, false); return true; }
                           return false;
                       }
                   });
@@ -971,6 +991,46 @@ jobs:
                   bubble = container;
                   if (motionEnabled()) { container.setScaleX(.7f); container.setScaleY(.7f); container.setAlpha(0); container.animate().alpha(1).scaleX(1).scaleY(1).setDuration(260).setInterpolator(new OvershootInterpolator(.7f)).start(); }
                   lastError = "";
+              }
+              private boolean beginQuickAccess() {
+                  if(screenLocked()||appVisible||!QuickAccessConfig.enabled(this))return false;
+                  List<JSONObject> q=payments();if(q.isEmpty())return false;
+                  try {
+                      quickItem=new JSONObject(q.get(0).toString());quickPayment=PaymentParser.parse(quickItem.optString("from"),quickItem.optString("body"));
+                      String[] categories=QuickAccessConfig.slots(this,quickPayment.type),labels=new String[4];for(int i=0;i<4;i++)labels[i]=categoryIcon(categories[i])+" "+tr(categories[i]);
+                      String amount=("Income".equals(quickPayment.type)?"+₹":"−₹")+quickPayment.amountText()+" · "+tr(quickPayment.type);
+                      quickLayer=new QuickAccessOverlay(this,labels,amount,quickPayment.type,lightMode);
+                      WindowManager.LayoutParams lp=new WindowManager.LayoutParams(-1,-1,windowType(),WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE|WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE,PixelFormat.TRANSLUCENT);
+                      lp.gravity=Gravity.TOP|Gravity.START;lp.alpha=.75f;windows.addView(quickLayer,lp);
+                      if(motionEnabled()){quickLayer.setAlpha(0);quickLayer.animate().alpha(1).setDuration(140).start();}
+                      quickLayer.post(()->{if(quickLayer!=null)updateQuickAccess(0,0,false);});
+                      bubble.performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS);return true;
+                  } catch(Exception e){hideQuickAccess();return false;}
+              }
+              private void updateQuickAccess(float rawX,float rawY,boolean dragging) {
+                  if(quickLayer==null||bubble==null)return;
+                  int[] origin=new int[2],icon=new int[2];quickLayer.getLocationOnScreen(origin);bubble.getLocationOnScreen(icon);
+                  quickLayer.bubbleX=icon[0]-origin[0];quickLayer.bubbleY=icon[1]-origin[1];quickLayer.dragging=dragging;
+                  int target=dragging?QuickAccessPolicy.target(rawX-origin[0],rawY-origin[1],quickLayer.getWidth(),quickLayer.getHeight(),dp(56)):-1;
+                  if(target!=quickLayer.selected&&target>=0)bubble.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP);
+                  quickLayer.selected=target;quickLayer.invalidate();
+              }
+              private void hideQuickAccess(){if(quickLayer!=null){try{windows.removeView(quickLayer);}catch(RuntimeException ignored){}quickLayer=null;}quickItem=null;quickPayment=null;}
+              private void finishQuickAccess(MotionEvent event,long held,float travel,int oldX,int oldY) {
+                  updateQuickAccess(event.getRawX(),event.getRawY(),true);
+                  int slot=quickLayer==null?-1:quickLayer.selected;
+                  if(quickPayment==null||!QuickAccessPolicy.canSave(QuickAccessConfig.enabled(this),held,travel,dp(72),slot,quickPayment.amount,screenLocked()||appVisible,false)) {hideQuickAccess();animateBubble(oldX,oldY,false);return;}
+                  try {
+                      JSONObject item=quickItem;PaymentParser payment=quickPayment;String category=QuickAccessConfig.slots(this,payment.type)[slot];
+                      JSONObject entry=new JSONObject().put("t",payment.type).put("a",payment.amount).put("note","").put("c",category).put("m",payment.merchant).put("who","").put("ts",item.optLong("ts",System.currentTimeMillis())).put("settled",0).put("smsFrom",item.optString("from")).put("smsBody",item.optString("body"));
+                      dismissingBubble=true;
+                      boolean saved=SmsStore.complete(this,SmsStore.key(item),item.optBoolean("demo")?null:entry);
+                      String message=item.optBoolean("demo")?"Preview only. No record added.":saved?"Saved to QuickSpend":"This payment was already handled";
+                      Toast.makeText(this,tr(message),Toast.LENGTH_SHORT).show();
+                      final View released=bubble;final int chosen=slot;hideQuickAccess();
+                      Runnable finish=()->{if(bubble==released){hideBubble();updateOverlay();}};
+                      if(motionEnabled()&&released!=null){released.animate().translationX(chosen==1?dp(90):chosen==3?-dp(90):0).translationY(chosen==0?-dp(90):chosen==2?dp(90):0).alpha(0).setDuration(180).withEndAction(finish).start();}else finish.run();
+                  } catch(Exception e){dismissingBubble=false;hideQuickAccess();animateBubble(oldX,oldY,false);Toast.makeText(this,tr("Could not save. Check free storage and try again."),Toast.LENGTH_LONG).show();}
               }
               private String categoryIcon(String label) {
                   switch(label) {
@@ -1155,7 +1215,7 @@ jobs:
                   closing.animate().cancel(); closing.setEnabled(false);
                   closing.animate().alpha(0).scaleX(.94f).scaleY(.94f).translationY(dp(18)).setDuration(150).withEndAction(() -> { if (panel == closing) { hidePanel(); updateOverlay(); } }).start();
               }
-              private void hideBubble() { hideTether(); if (bubbleMotion != null) { bubbleMotion.cancel(); bubbleMotion=null; } dismissingBubble=false; if (bubble != null) { bubble.animate().cancel(); try { windows.removeView(bubble); } catch (RuntimeException ignored) { } bubble = null; } }
+              private void hideBubble() { hideQuickAccess(); hideTether(); if (bubbleMotion != null) { bubbleMotion.cancel(); bubbleMotion=null; } dismissingBubble=false; if (bubble != null) { bubble.animate().cancel(); try { windows.removeView(bubble); } catch (RuntimeException ignored) { } bubble = null; } }
               private void hidePanel() {
                   if (panel != null) {
                       panel.animate().cancel();
@@ -1397,9 +1457,9 @@ jobs:
           assert service.find('property') is not None, 'Foreground service use-case explanation missing'
           with ZipFile('android/app/build/outputs/bundle/release/app-release.aab') as archive:
               dex = [archive.read(n) for n in archive.namelist() if n.startswith('base/dex/') and n.endswith('.dex')]
-              for cls in (b'Lcom/quickspend/app/SmsBridgePlugin;', b'Lcom/quickspend/app/SmsReceiver;', b'Lcom/quickspend/app/FloatingCaptureService;', b'Lcom/quickspend/app/SmsStore;', b'Lcom/quickspend/app/PaymentParser;', b'Lcom/quickspend/app/CaptureCatalog;', b'Lcom/quickspend/app/CaptureMotion;', b'Lcom/quickspend/app/QsLanguage;', b'Lcom/quickspend/app/AccountBridgePlugin;', b'Lcom/quickspend/app/UpdateBridgePlugin;', b'Lcom/quickspend/app/UpdateMessagingService;'):
+              for cls in (b'Lcom/quickspend/app/SmsBridgePlugin;', b'Lcom/quickspend/app/SmsReceiver;', b'Lcom/quickspend/app/FloatingCaptureService;', b'Lcom/quickspend/app/SmsStore;', b'Lcom/quickspend/app/PaymentParser;', b'Lcom/quickspend/app/CaptureCatalog;', b'Lcom/quickspend/app/QuickAccessConfig;', b'Lcom/quickspend/app/QuickAccessPolicy;', b'Lcom/quickspend/app/QuickAccessOverlay;', b'Lcom/quickspend/app/CaptureMotion;', b'Lcom/quickspend/app/QsLanguage;', b'Lcom/quickspend/app/AccountBridgePlugin;', b'Lcom/quickspend/app/UpdateBridgePlugin;', b'Lcom/quickspend/app/UpdateMessagingService;'):
                   assert any(cls in data for data in dex), 'Bundle missing native class: ' + cls.decode()
-              for method in ('overlayStatus', 'openOverlaySettings', 'setOverlayEnabled', 'testOverlay', 'setLanguage'):
+              for method in ('quickAccessSettings', 'setQuickAccessSettings', 'overlayStatus', 'openOverlaySettings', 'setOverlayEnabled', 'testOverlay', 'setLanguage'):
                   assert any(method.encode() + bytes([0]) in data for data in dex), 'Native floating method missing: ' + method
               assert any(n.endswith('/qs_brand_icon.png') for n in archive.namelist()), 'Native brand icon missing'
               assert 'base/assets/public/locales/hi.json' in archive.namelist(), 'Hindi translations missing'
