@@ -1,0 +1,11 @@
+import {readFileSync,writeFileSync,mkdirSync,cpSync} from 'node:fs';
+const pkg=JSON.parse(readFileSync('package.json','utf8'));
+const number=process.env.IOS_BUILD_NUMBER||'1';
+if(!/^\d+$/.test(number)||Number(number)<1)throw Error('Invalid iOS build number');
+if(!/^\d+\.\d+\.\d+$/.test(pkg.version))throw Error('iOS marketing version must have three numeric components');
+mkdirSync('www',{recursive:true});
+const metadata={platform:'ios',version:pkg.version,number};
+const html=readFileSync('index.html','utf8').replace('<script>','<script>\nwindow.QUICKSPEND_BUILD='+JSON.stringify(metadata)+';');
+writeFileSync('www/index.html',html);
+for(const path of ['assets','locales'])cpSync(path,'www/'+path,{recursive:true});
+console.log('Staged iOS web bundle',metadata.version,metadata.number);

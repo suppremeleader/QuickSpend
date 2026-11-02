@@ -462,5 +462,11 @@
   "Scheduled": "तय किस्त",
   "EMI plans": "किस्तों की योजनाएँ",
   "Recurring records": "नियमित लेन-देन",
-  "Salary, rent and other ongoing records": "वेतन, किराया और दूसरे नियमित लेन-देन"
+  "Salary, rent and other ongoing records": "वेतन, किराया और दूसरे नियमित लेन-देन",
+  "Quick entry": "जल्दी हिसाब जोड़ें",
+  "Add a payment manually or paste a bank SMS copied from Messages.": "भुगतान खुद जोड़ें या Messages से कॉपी किया बैंक का SMS पेस्ट करें।",
+  "Your records stay on this iPhone. Export a backup from Settings.": "आपका हिसाब इसी iPhone पर रहता है। Settings से बैकअप निकालें।",
+  "Add manually or paste a bank SMS to start.": "हिसाब खुद जोड़ें या बैंक का SMS पेस्ट करें।",
+  "iOS development build": "iOS विकास संस्करण",
+  "Records are saved on this iPhone.": "हिसाब इसी iPhone पर सेव है।"
 }
