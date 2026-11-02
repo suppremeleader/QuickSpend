@@ -402,5 +402,11 @@
   "Deleting an account moves its transactions and plans to the selected account.": "खाता हटाने पर उसके लेन-देन और योजनाएँ चुने गए खाते में चली जाएँगी।",
   "Delete account": "खाता हटाएँ",
   "Choose a unique account name.": "खाते का अलग नाम चुनें।",
-  "Delete account and move its records?": "खाता हटाकर उसके रिकॉर्ड दूसरे खाते में भेजें?"
+  "Delete account and move its records?": "खाता हटाकर उसके रिकॉर्ड दूसरे खाते में भेजें?",
+  "Categories": "श्रेणियाँ",
+  "Add category": "श्रेणी जोड़ें",
+  "New category": "नई श्रेणी",
+  "Comment": "टिप्पणी",
+  "Optional": "वैकल्पिक",
+  "Choose a unique category name (up to 40 characters).": "अलग श्रेणी नाम चुनें (40 अक्षरों तक)।"
 }
