@@ -86,6 +86,8 @@ jobs:
           java -cp /tmp/qs-motion QuickAccessPolicyTest
           javac -d /tmp/qs-motion native/CaptureWakePolicy.java tests/CaptureWakePolicyTest.java
           java -cp /tmp/qs-motion CaptureWakePolicyTest
+          javac -d /tmp/qs-motion native/CaptureSoundPolicy.java tests/CaptureSoundPolicyTest.java
+          java -cp /tmp/qs-motion CaptureSoundPolicyTest
       - uses: android-actions/setup-android@v3
         with:
           packages: platform-tools
@@ -108,8 +110,9 @@ jobs:
           npm install @capacitor/local-notifications@^6.0.0
           if [ ! -d android ]; then npx cap add android; fi
           D=android/app/src/main/java/com/quickspend/app
-          mkdir -p $D
-          cp native/CaptureRecovery.java native/CaptureRecoveryJob.java native/CaptureWakePolicy.java native/CaptureCatalog.java native/QuickAccessConfig.java native/QuickAccessPolicy.java native/QuickAccessOverlay.java native/QsLanguage.java native/AccountBridgePlugin.java native/UpdatePolicy.java native/UpdatePush.java native/UpdateMessagingService.java native/UpdateBridgePlugin.java $D/
+          mkdir -p $D android/app/src/main/res/raw
+          cp assets/capture-appear.mp3 android/app/src/main/res/raw/qs_capture_appear.mp3
+          cp native/CaptureSound.java native/CaptureSoundPolicy.java native/CaptureRecovery.java native/CaptureRecoveryJob.java native/CaptureWakePolicy.java native/CaptureCatalog.java native/QuickAccessConfig.java native/QuickAccessPolicy.java native/QuickAccessOverlay.java native/QsLanguage.java native/AccountBridgePlugin.java native/UpdatePolicy.java native/UpdatePush.java native/UpdateMessagingService.java native/UpdateBridgePlugin.java $D/
           if [ -s config/google-services.json ]; then
             mkdir -p android/app/src/main/assets/cloud
             cp config/google-services.json android/app/src/main/assets/cloud/
@@ -834,6 +837,7 @@ jobs:
                               WindowManager.LayoutParams lp=new WindowManager.LayoutParams(size,size,WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,PixelFormat.TRANSLUCENT);lp.gravity=Gravity.TOP|Gravity.RIGHT;lp.x=16;lp.y=c.getResources().getDisplayMetrics().heightPixels/3;
                               icon.setOnClickListener(view->{Intent launch=c.getPackageManager().getLaunchIntentForPackage(c.getPackageName());if(launch!=null){launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);try{c.startActivity(launch);}catch(RuntimeException ignored){}}clearRecovery();});
                               recoveryWindows.addView(icon,lp);recoveryBubble=icon;
+                              CaptureSound.appeared(c,SmsStore.pending(c),true);
                               icon.postDelayed(()->{if(recoveryBubble==icon&&enabled(c)&&!CaptureRecovery.hidden(c)&&!lock.isKeyguardLocked()&&power.isInteractive()&&!appVisible&&Settings.canDrawOverlays(c)&&icon.getWindowVisibility()==View.VISIBLE)startRecovery(c);else clearRecovery();},100);
                               icon.postDelayed(()->{if(recoveryBubble==icon)clearRecovery();},10000);
                           }catch(RuntimeException e){clearRecovery();startRecovery(c);}
@@ -955,6 +959,7 @@ jobs:
                   if (bubble != null) {
                       ((TextView) bubble.findViewWithTag("count")).setText(count > 99 ? "99+" : String.valueOf(count));
                       bubble.setContentDescription(bubbleDescription(count));
+                      CaptureSound.appeared(this,SmsStore.pending(this),false);
                       return;
                   }
                   FrameLayout container = new FrameLayout(this);
@@ -1013,6 +1018,7 @@ jobs:
                   });
                   windows.addView(container, bubbleParams);
                   bubble = container;
+                  CaptureSound.appeared(this,SmsStore.pending(this),true);
                   if (motionEnabled()) { container.setScaleX(.7f); container.setScaleY(.7f); container.setAlpha(0); container.animate().alpha(1).scaleX(1).scaleY(1).setDuration(260).setInterpolator(new OvershootInterpolator(.7f)).start(); }
                   lastError = "";
               }
@@ -1497,8 +1503,9 @@ jobs:
           recovery = next(node for node in root.find('application').findall('service') if node.get(ns + 'name', '').endswith('CaptureRecoveryJob'))
           assert recovery.get(ns + 'permission') == 'android.permission.BIND_JOB_SERVICE' and recovery.get(ns + 'exported') == 'true', 'Recovery job must only be bindable by Android'
           with ZipFile('android/app/build/outputs/bundle/release/app-release.aab') as archive:
+              assert any(name.endswith('/raw/qs_capture_appear.mp3') for name in archive.namelist()), 'Missing floater appearance sound'
               dex = [archive.read(n) for n in archive.namelist() if n.startswith('base/dex/') and n.endswith('.dex')]
-              for cls in (b'Lcom/quickspend/app/SmsBridgePlugin;', b'Lcom/quickspend/app/SmsReceiver;', b'Lcom/quickspend/app/FloatingCaptureService;', b'Lcom/quickspend/app/SmsStore;', b'Lcom/quickspend/app/PaymentParser;', b'Lcom/quickspend/app/CaptureCatalog;', b'Lcom/quickspend/app/QuickAccessConfig;', b'Lcom/quickspend/app/QuickAccessPolicy;', b'Lcom/quickspend/app/QuickAccessOverlay;', b'Lcom/quickspend/app/CaptureRecovery;', b'Lcom/quickspend/app/CaptureRecoveryJob;', b'Lcom/quickspend/app/CaptureWakePolicy;', b'Lcom/quickspend/app/CaptureMotion;', b'Lcom/quickspend/app/QsLanguage;', b'Lcom/quickspend/app/AccountBridgePlugin;', b'Lcom/quickspend/app/UpdateBridgePlugin;', b'Lcom/quickspend/app/UpdateMessagingService;'):
+              for cls in (b'Lcom/quickspend/app/SmsBridgePlugin;', b'Lcom/quickspend/app/SmsReceiver;', b'Lcom/quickspend/app/FloatingCaptureService;', b'Lcom/quickspend/app/SmsStore;', b'Lcom/quickspend/app/PaymentParser;', b'Lcom/quickspend/app/CaptureCatalog;', b'Lcom/quickspend/app/QuickAccessConfig;', b'Lcom/quickspend/app/QuickAccessPolicy;', b'Lcom/quickspend/app/QuickAccessOverlay;', b'Lcom/quickspend/app/CaptureSound;', b'Lcom/quickspend/app/CaptureSoundPolicy;', b'Lcom/quickspend/app/CaptureRecovery;', b'Lcom/quickspend/app/CaptureRecoveryJob;', b'Lcom/quickspend/app/CaptureWakePolicy;', b'Lcom/quickspend/app/CaptureMotion;', b'Lcom/quickspend/app/QsLanguage;', b'Lcom/quickspend/app/AccountBridgePlugin;', b'Lcom/quickspend/app/UpdateBridgePlugin;', b'Lcom/quickspend/app/UpdateMessagingService;'):
                   assert any(cls in data for data in dex), 'Bundle missing native class: ' + cls.decode()
               for method in ('quickAccessSettings', 'setQuickAccessSettings', 'overlayStatus', 'openOverlaySettings', 'setOverlayEnabled', 'testOverlay', 'setLanguage'):
                   assert any(method.encode() + bytes([0]) in data for data in dex), 'Native floating method missing: ' + method

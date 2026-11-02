@@ -8,6 +8,12 @@
 - With **Settings → Quick Access** enabled, holding the bubble arms category capture. Pull and release launches opposite the pull toward the highlighted category. Short pulls cancel; the icon keeps its shape. Income and expense shortcuts remain separate.
 - English and Hindi labels included. Existing pending-payment recovery, backup and EMI calculations retained.
 
+## Next build: floater appearance sound (QUI-24)
+
+- Added the supplied 1.1-second sound when the floater first appears for a new pending payment batch. Badge refreshes, popup closing, unlock/recovery and rotation do not replay an already announced payment.
+- Silent/vibrate, zero notification volume and Do Not Disturb suppress the cue. No additional notification or permission is added, and playback errors do not affect payment capture.
+- Phone check: receive a payment outside QuickSpend; hear the cue once. Open/close the popup, lock/unlock and rotate: no repeat. Dismiss, receive a new payment: one cue. Repeat in silent/DND: no cue.
+
 ## Validation
 
 17 JavaScript regression suites and 10 Python tests pass locally. Java sources and generated service code parse successfully. CI additionally runs the pure Java gesture policies, real Chromium phone-layout checks with screenshots and the signed Android bundle build.
