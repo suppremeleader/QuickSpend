@@ -30,7 +30,7 @@ const assert=require('assert');const{app,settle}=require('./app-inbox.cjs');
  assert.match(a.nodes.get('#s-home').innerHTML,/account-dot on" aria-label="ICICI"/);
  assert.doesNotMatch(a.nodes.get('#s-home').innerHTML,/account-card-chip|account-card-lines/,'Debit-card decoration is deferred');
  a.eval("homePage='emi';render()");assert.equal(a.nodes.get('#entry-action').textContent,'Add a plan');assert.equal(a.nodes.get('#entry-action').className,'fab emi-add-plan');
- a.c.primaryEntryAction();assert.match(a.nodes.get('#sheet').innerHTML,/New recurring/,'Bottom EMI button opens plan creation');
+ a.c.primaryEntryAction();assert.match(a.nodes.get('#sheet').innerHTML,/New EMI/,'Bottom EMI button opens plan creation');
  a.eval("currentTab='review';updateEntryAction()");assert.equal(a.nodes.get('#entry-action').textContent,'+','Other screens retain normal transaction action');
  await a.c.chooseLanguage('hi');a.eval("currentTab='home';homePage='emi';render()");assert.equal(a.nodes.get('#entry-action').textContent,a.eval("L('Add a plan')"));
  await a.c.chooseLanguage('en');a.eval("homePage='overview';render()");

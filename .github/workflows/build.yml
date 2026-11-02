@@ -45,6 +45,7 @@ jobs:
           node tests/budgets.cjs
           node tests/account-layout.cjs
           node tests/account-polish.cjs
+          node tests/dated-emi.cjs
           node tests/emi-regression.cjs
           node tests/appearance-nav.cjs
           node tests/screen-polish.cjs
