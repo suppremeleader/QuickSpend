@@ -1,0 +1,58 @@
+name: iOS Foundation Simulator
+on:
+  push:
+    branches: [ios/v1-foundation]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  simulator:
+    runs-on: macos-15
+    timeout-minutes: 30
+    env:
+      IOS_BUILD_NUMBER: ${{ github.run_number }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Check shared app regressions
+        run: |
+          set -euo pipefail
+          for test in tests/*.cjs; do node "$test"; done
+          python3 -m unittest discover -s tests -p 'test_*.py'
+      - name: Prepare iOS development project
+        run: |
+          set -euo pipefail
+          xcodebuild -version
+          npm install
+          node scripts/ios/stage-web.mjs
+          npx cap add ios
+          python3 scripts/ios/configure.py
+          swift scripts/ios/icons.swift assets/quickspend-icon.png ios/App/App/Assets.xcassets/AppIcon.appiconset
+          npx cap sync ios
+      - name: Build unsigned simulator app
+        run: |
+          set -euo pipefail
+          mkdir -p build
+          if ! xcodebuild -workspace ios/App/App.xcworkspace -scheme App -configuration Debug -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' -derivedDataPath build/ios CODE_SIGNING_ALLOWED=NO build > build/ios-xcode.log 2>&1; then
+            tail -120 build/ios-xcode.log
+            exit 1
+          fi
+          APP=build/ios/Build/Products/Debug-iphonesimulator/App.app
+          test -d "$APP"
+          test -s "$APP/public/index.html"
+          /usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP/Info.plist"
+          /usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$APP/Info.plist"
+          ditto -c -k --sequesterRsrc --keepParent "$APP" build/QuickSpend-iOS-Simulator.zip
+          echo 'SIMULATOR VERIFIED: unsigned app compiled; not an IPA or TestFlight upload.'
+      - name: Upload simulator build and logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: quickspend-ios-simulator-${{ github.run_number }}
+          path: |
+            build/QuickSpend-iOS-Simulator.zip
+            build/ios-xcode.log
+          if-no-files-found: warn
+          retention-days: 14

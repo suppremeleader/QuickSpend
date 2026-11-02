@@ -1,0 +1,7 @@
+const assert=require('assert'),fs=require('fs'),path=require('path'),{spawnSync}=require('child_process');
+const root=fs.mkdtempSync(path.join(process.cwd(),'.ios-stage-test-')),script=path.resolve('scripts/ios/stage-web.mjs');
+try{
+ fs.writeFileSync(path.join(root,'package.json'),JSON.stringify({version:'1.0.0'}));const html='<html><script>const app=true;</script></html>';fs.writeFileSync(path.join(root,'index.html'),html);for(const folder of ['assets','locales'])fs.mkdirSync(path.join(root,folder));fs.writeFileSync(path.join(root,'assets/icon.png'),'fixture');fs.writeFileSync(path.join(root,'locales/hi.json'),'{}');
+ let r=spawnSync(process.execPath,[script],{cwd:root,env:{...process.env,IOS_BUILD_NUMBER:'7'},encoding:'utf8'});assert.equal(r.status,0,r.stderr);const staged=fs.readFileSync(path.join(root,'www/index.html'),'utf8');assert.match(staged,/"platform":"ios"/);assert.match(staged,/"number":"7"/);assert.equal((staged.match(/<script>/g)||[]).length,1);assert.equal(fs.readFileSync(path.join(root,'index.html'),'utf8'),html,'Staging does not modify the shared source');assert.ok(fs.existsSync(path.join(root,'www/locales/hi.json')));
+ r=spawnSync(process.execPath,[script],{cwd:root,env:{...process.env,IOS_BUILD_NUMBER:'invalid'},encoding:'utf8'});assert.notEqual(r.status,0);console.log('PASS: iOS staging metadata/assets, single-script compatibility, source isolation and invalid-build rejection');
+}finally{fs.rmSync(root,{recursive:true,force:true})}
