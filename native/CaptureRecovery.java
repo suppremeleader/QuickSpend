@@ -32,6 +32,9 @@ public final class CaptureRecovery {
     public static void payment(Context c) {
         c.getSharedPreferences(PREFS,0).edit().putBoolean(HIDDEN,false).putInt("capture_recovery_attempts",0).commit();
         attempts=0;
+        // Persist the OS fallback before the SMS broadcast returns; a posted
+        // callback alone is not guaranteed to survive receiver process teardown.
+        if(FloatingCaptureService.enabled(c) && Settings.canDrawOverlays(c)) schedule(c);
         changed(c);
     }
     public static void changed(Context context) {
