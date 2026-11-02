@@ -1,0 +1,15 @@
+const assert=require('assert');const{app,settle}=require('./app-inbox.cjs');
+(async()=>{
+ const a=app({savedLanguage:'en',tabs:true});await settle();
+ const now=Date.now();a.c.rows=Array.from({length:8},(_,i)=>({id:i+1,t:i%2?'Expense':'Income',m:i===0?'<img onerror=x>':'Merchant '+i,c:i%2?'Food':'Salary',a:(i+1)*10,note:i===1?'Weekend lunch':'',acc:i%2?'Cash':'Main account',ts:now-i*86400000}));a.c.rows.push({id:90,t:'Expense',m:'Planned EMI',emi:true,c:'Bills',a:999,ts:now});a.eval('tx=rows;pending=[];recur=[];render()');
+ let home=a.nodes.get('#s-home').innerHTML;assert.equal((home.match(/class="history-row"/g)||[]).length,5);assert.match(home,/See all/);assert.doesNotMatch(home,/Planned EMI|<img onerror/);assert.match(home,/&lt;img onerror=x&gt;/);
+ let pushes=0,backs=0;a.c.window.history={pushState(){pushes++},back(){backs++;a.listeners.popstate()}};a.c.openHistory();assert.equal(pushes,1);assert.equal(a.c.historyRows().length,8);assert.equal(a.nodes.get('#tabs').hidden,true);assert.ok(a.nodes.get('#s-history').classList.contains('on'));
+ const search=a.nodes.get('#s-history').innerHTML;a.c.setHistoryFilter('query','lunch');assert.equal(a.c.historyRows()[0].id,2);assert.equal(a.nodes.get('#s-history').innerHTML,search,'Typing changes only results, retaining search input/keyboard');assert.equal(pushes,1);
+ a.c.setHistoryFilter('query','');a.c.setHistoryFilter('account','Cash');assert.equal(a.c.historyRows().length,4);a.c.setHistoryFilter('category','Salary');assert.equal(a.c.historyRows().length,0);assert.match(a.nodes.get('#history-results').innerHTML,/No matching transactions/);
+ a.c.resetHistoryFilters();a.c.setHistoryFilter('sort','highest');assert.equal(a.c.historyRows()[0].a,80);a.c.setHistoryFilter('sort','oldest');assert.equal(a.c.historyRows()[0].id,8);a.c.setHistoryFilter('date','week');assert.ok(a.c.historyRows().length>=6&&a.c.historyRows().length<=7);
+ a.c.openTransactionEdit(2);assert.match(a.nodes.get('#sheet').innerHTML,/deleteTransaction\(2\)/);a.c.closeSheet();assert.equal(a.eval('historyOpen'),true);a.c.closeHistory();assert.equal(backs,1);assert.equal(a.nodes.get('#tabs').hidden,false);assert.ok(a.nodes.get('#s-home').classList.contains('on'));
+ a.nodes.get('#s-home').scrollTop=450;a.nodes.get('#s-insights').scrollTop=250;a.nodes.get('#tab-insights').click();assert.equal(a.nodes.get('#s-insights').scrollTop,0);a.nodes.get('#tab-home').click();assert.equal(a.nodes.get('#s-home').scrollTop,0);
+ a.nodes.get('#s-home').scrollTop=350;a.c.selectHomePage('savings');assert.equal(a.nodes.get('#s-home').scrollTop,0);a.nodes.get('#s-home').scrollTop=100;a.c.selectHomePage('savings');assert.equal(a.nodes.get('#s-home').scrollTop,100,'Selecting the current category does not reset an in-place screen');
+ await a.c.chooseLanguage('hi');a.c.openHistory();assert.match(a.nodes.get('#s-history').innerHTML,/लेन-देन का इतिहास|लेन-देन खोजें/);
+ console.log('PASS: bounded recent history, escaped names, filters/search/sort/date, edit and Back routing, input retention, navigation-only scroll reset and Hindi');
+})().catch(e=>{console.error(e);process.exit(1)});

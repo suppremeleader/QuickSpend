@@ -6,7 +6,7 @@ const{app,settle}=require('./app-inbox.cjs');
  let home=a.nodes.get('#s-home').innerHTML;
  assert.match(home,/class="home-page on" aria-current="page"[^>]*>Home/);
  assert.match(home,/balance-hero/);
- assert.match(home,/Recent/);
+ assert.match(home,/Transaction history/);
  assert.ok(!home.includes('budget-card-strong'),'Overview keeps planning cards out of the transaction feed');
  assert.ok(!home.includes('recurring-feature'),'Overview keeps EMI cards out of the transaction feed');
  a.eval("homePage='savings';render()");home=a.nodes.get('#s-home').innerHTML;
