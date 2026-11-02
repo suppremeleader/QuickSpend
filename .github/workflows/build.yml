@@ -921,10 +921,11 @@ jobs:
               }
               private int windowType() { return Build.VERSION.SDK_INT >= 26 ? WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY : WindowManager.LayoutParams.TYPE_PHONE; }
               private DisplayMetrics display() { DisplayMetrics metrics = new DisplayMetrics(); windows.getDefaultDisplay().getMetrics(metrics); return metrics; }
+              private String bubbleDescription(int count){return QuickAccessConfig.enabled(this)?"QuickSpend · "+count+" · "+tr("Hold for Quick Access"):tr("QuickSpend: " + count + " payments to categorise. Tap to open, drag to move, pull and release to hide.");}
               private void showBubble(int count) {
                   if (bubble != null) {
                       ((TextView) bubble.findViewWithTag("count")).setText(count > 99 ? "99+" : String.valueOf(count));
-                      bubble.setContentDescription(tr("QuickSpend: " + count + " payments to categorise. Tap to open, drag to move, pull and release to hide."));
+                      bubble.setContentDescription(bubbleDescription(count));
                       return;
                   }
                   FrameLayout container = new FrameLayout(this);
@@ -932,7 +933,7 @@ jobs:
                   FrameLayout.LayoutParams circle = new FrameLayout.LayoutParams(dp(52), dp(52), Gravity.CENTER); container.addView(icon, circle);
                   TextView badge = text(count > 99 ? "99+" : String.valueOf(count), 10, Color.WHITE); badge.setTag("count"); badge.setGravity(Gravity.CENTER); badge.setBackground(shape(Color.rgb(219, 72, 85), 12));
                   container.addView(badge, new FrameLayout.LayoutParams(dp(23), dp(20), Gravity.TOP | Gravity.END));
-                  container.setElevation(dp(8)); container.setContentDescription(tr("QuickSpend: " + count + " payments to categorise. Tap to open, drag to move, pull and release to hide."));
+                  container.setElevation(dp(8)); container.setContentDescription(bubbleDescription(count));
                   SharedPreferences p = getSharedPreferences(PREFS, 0); DisplayMetrics screen = display();
                   bubbleParams = new WindowManager.LayoutParams(dp(60), dp(60), windowType(), WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE | WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL, PixelFormat.TRANSLUCENT);
                   bubbleParams.gravity = Gravity.TOP | Gravity.START;
