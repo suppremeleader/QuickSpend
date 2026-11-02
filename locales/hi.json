@@ -438,5 +438,11 @@
   "No income or expenses in this period.": "इस अवधि में आमदनी या खर्च नहीं है।",
   "View chart values": "ग्राफ़ की राशियाँ देखें",
   "Spending by category": "श्रेणी के अनुसार खर्च",
-  "No expenses in this period.": "इस अवधि में कोई खर्च नहीं है।"
+  "No expenses in this period.": "इस अवधि में कोई खर्च नहीं है।",
+  "Color mode": "रंग मोड",
+  "Dark": "डार्क",
+  "Light": "लाइट",
+  "Default appearance": "डिफ़ॉल्ट रूप",
+  "A brighter look": "उजला रूप",
+  "Main navigation": "मुख्य नेविगेशन"
 }

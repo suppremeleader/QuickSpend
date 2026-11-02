@@ -46,6 +46,7 @@ jobs:
           node tests/account-layout.cjs
           node tests/account-polish.cjs
           node tests/emi-regression.cjs
+          node tests/appearance-nav.cjs
           node tests/screen-polish.cjs
           node tests/quick-capture-fixes.cjs
           node tests/accounts-delete.cjs
@@ -344,6 +345,12 @@ jobs:
             }
 
             @PluginMethod
+            public void setColorMode(PluginCall call) {
+              try { QsLanguage.setColorMode(getContext(),call.getString("mode","dark")); if(getActivity()!=null)getActivity().runOnUiThread(()->QsLanguage.applySystemBars(getActivity())); FloatingCaptureService.refresh(getContext(),false); call.resolve(); }
+              catch(Exception e){call.reject("Could not save color mode",e);}
+            }
+
+            @PluginMethod
             public void setLanguage(PluginCall call) {
               String language = call.getString("language", "");
               getActivity().runOnUiThread(() -> {
@@ -418,6 +425,7 @@ jobs:
               registerPlugin(AccountBridgePlugin.class);
               registerPlugin(UpdateBridgePlugin.class);
               super.onCreate(savedInstanceState);
+              QsLanguage.applySystemBars(this);
               if (android.os.Build.VERSION.SDK_INT >= 26) {
                 android.app.NotificationManager nm = (android.app.NotificationManager) getSystemService(NOTIFICATION_SERVICE);
                 nm.createNotificationChannel(new android.app.NotificationChannel(SmsReceiver.CH, QsLanguage.tr(this,"Payments"), android.app.NotificationManager.IMPORTANCE_HIGH));
@@ -435,6 +443,7 @@ jobs:
             @Override
             public void onResume() {
               super.onResume();
+              QsLanguage.applySystemBars(this);
               UpdatePush.configure(this);
               FloatingCaptureService.activityVisible(this, true);
               if (getBridge() != null && getBridge().getWebView() != null) {
@@ -722,7 +731,10 @@ jobs:
               private String foregroundLanguage="";
               private String panelKey;
               private BroadcastReceiver screenReceiver;
-              private static final int BG = Color.rgb(21, 21, 27), FG = Color.rgb(244, 244, 246), MUTED = Color.rgb(154, 154, 169), ACCENT = Color.rgb(201, 243, 107);
+              private int BG = Color.rgb(21, 21, 27), FG = Color.rgb(244, 244, 246), MUTED = Color.rgb(154, 154, 169), ACCENT = Color.rgb(201, 243, 107);
+              private boolean lightMode, paletteLoaded;
+              private void applyPalette(){boolean next="light".equals(QsLanguage.colorMode(this));if(paletteLoaded&&next==lightMode)return;if(paletteLoaded)hideAll();lightMode=next;paletteLoaded=true;BG=next?Color.rgb(248,250,245):Color.rgb(21,21,27);FG=next?Color.rgb(25,35,27):Color.rgb(244,244,246);MUTED=next?Color.rgb(98,110,96):Color.rgb(154,154,169);ACCENT=next?Color.rgb(56,107,40):Color.rgb(201,243,107);}
+              private int selectedForeground(){return lightMode?Color.WHITE:Color.BLACK;}
 
               public static boolean enabled(Context c) { return c.getSharedPreferences(PREFS, 0).getBoolean("enabled", true); }
               public static boolean running() { return instance != null; }
@@ -792,6 +804,7 @@ jobs:
                   super.onCreate();
                   instance = this;
                   windows = (WindowManager) getSystemService(WINDOW_SERVICE);
+                  applyPalette();
                   screenReceiver = new BroadcastReceiver() {
                       @Override public void onReceive(Context context, Intent intent) { updateOverlay(); }
                   };
@@ -863,6 +876,7 @@ jobs:
               }
               private void updateOverlay() {
                   try {
+                      applyPalette();
                       if (!enabled(this) || !Settings.canDrawOverlays(this)) { hideAll(); stopSelf(); return; }
                       if (appVisible || screenLocked()) { hideAll(); return; }
                       if (dismissingBubble) return;
@@ -969,8 +983,8 @@ jobs:
                   return Build.VERSION.SDK_INT >= 26 ? ValueAnimator.areAnimatorsEnabled() : Settings.Global.getFloat(getContentResolver(), Settings.Global.ANIMATOR_DURATION_SCALE, 1f) != 0;
               }
               private android.graphics.drawable.Drawable chipBackground(boolean selected) {
-                  GradientDrawable base = shape(selected ? ACCENT : Color.rgb(29, 29, 37), 26);
-                  base.setStroke(dp(1), selected ? ACCENT : Color.rgb(49,49,60));
+                  GradientDrawable base = shape(selected ? ACCENT : (lightMode?Color.rgb(235,242,228):Color.rgb(29,29,37)), 26);
+                  base.setStroke(dp(1), selected ? ACCENT : (lightMode?Color.rgb(207,218,198):Color.rgb(49,49,60)));
                   return new RippleDrawable(ColorStateList.valueOf(0x28ffffff), base, null);
               }
               private class TetherView extends View {
@@ -1026,7 +1040,7 @@ jobs:
               }
               private LinearLayout row() { LinearLayout r = new LinearLayout(this); r.setOrientation(LinearLayout.HORIZONTAL); r.setGravity(Gravity.CENTER_VERTICAL); return r; }
               private Button button(String label, boolean selected) {
-                  Button b = new Button(this); b.setText(tr(label)); b.setTextSize("hi".equals(QsLanguage.get(this)) ? 11 : 12); b.setAllCaps(false); b.setMaxLines(2); b.setGravity(Gravity.CENTER); b.setTextColor(selected ? Color.BLACK : FG); b.setBackground(chipBackground(selected)); b.setMinWidth(0); b.setMinimumWidth(0); b.setMinHeight(dp(44)); b.setMinimumHeight(dp(44)); b.setPadding(dp(8), dp(6), dp(8), dp(6)); return b;
+                  Button b = new Button(this); b.setText(tr(label)); b.setTextSize("hi".equals(QsLanguage.get(this)) ? 11 : 12); b.setAllCaps(false); b.setMaxLines(2); b.setGravity(Gravity.CENTER); b.setTextColor(selected ? selectedForeground() : FG); b.setBackground(chipBackground(selected)); b.setMinWidth(0); b.setMinimumWidth(0); b.setMinHeight(dp(44)); b.setMinimumHeight(dp(44)); b.setPadding(dp(8), dp(6), dp(8), dp(6)); return b;
               }
               private void append(LinearLayout root, View child, int top) {
                   LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2); lp.topMargin = dp(top); root.addView(child, lp);
@@ -1036,7 +1050,7 @@ jobs:
                   PaymentParser details = PaymentParser.parse(item.optString("from"), item.optString("body"));
                   LinearLayout frame = new LinearLayout(this); frame.setOrientation(LinearLayout.VERTICAL);
                   ScrollView scroll = new ScrollView(this); scroll.setFillViewport(false); scroll.setVerticalScrollBarEnabled(false); scroll.setClipToOutline(true);
-                  GradientDrawable card = new GradientDrawable(GradientDrawable.Orientation.TL_BR, new int[]{Color.rgb(32,32,42), Color.rgb(18,18,23)}); card.setCornerRadius(dp(36)); card.setStroke(dp(1), Color.rgb(49,49,60)); frame.setBackground(card); frame.setClipToOutline(true); frame.setElevation(dp(16));
+                  GradientDrawable card = new GradientDrawable(GradientDrawable.Orientation.TL_BR, lightMode?new int[]{Color.WHITE,Color.rgb(245,248,240)}:new int[]{Color.rgb(32,32,42), Color.rgb(18,18,23)}); card.setCornerRadius(dp(36)); card.setStroke(dp(1), lightMode?Color.rgb(207,218,198):Color.rgb(49,49,60)); frame.setBackground(card); frame.setClipToOutline(true); frame.setElevation(dp(16));
                   frame.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));
                   LinearLayout root = new LinearLayout(this); root.setOrientation(LinearLayout.VERTICAL); root.setPadding(dp(20), dp(18), dp(20), dp(8)); scroll.addView(root);
                   LinearLayout brand = row(); ImageView logo = new ImageView(this); logo.setImageResource(R.drawable.qs_brand_icon); logo.setBackground(shape(BG, 10)); logo.setClipToOutline(true); brand.addView(logo, new LinearLayout.LayoutParams(dp(28), dp(28)));
@@ -1044,7 +1058,7 @@ jobs:
                   LinearLayout header = row(); TextView title = text(tr(item.optBoolean("demo") ? "Try quick capture" : "Quick capture"), 19, FG); title.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
                   header.addView(title, new LinearLayout.LayoutParams(0, -2, 1)); Button fullscreen = button("⛶", false); fullscreen.setContentDescription(tr("Expand quick capture to fullscreen")); header.addView(fullscreen, new LinearLayout.LayoutParams(dp(44),dp(44))); Button close = button("×", false); close.setContentDescription(tr("Close quick capture")); header.addView(close, new LinearLayout.LayoutParams(dp(44), dp(44))); append(root, header, 10);
                   TextView merchant = text(item.optBoolean("demo") ? tr("Preview only · no expense will be saved") : details.merchant, 13, MUTED); append(root, merchant, 8);
-                  LinearLayout amountRow = row(); amountRow.setGravity(Gravity.CENTER); amountRow.setPadding(dp(12),dp(22),dp(12),dp(22)); amountRow.setBackground(shape(Color.rgb(13,13,17),26));
+                  LinearLayout amountRow = row(); amountRow.setGravity(Gravity.CENTER); amountRow.setPadding(dp(12),dp(22),dp(12),dp(22)); amountRow.setBackground(shape(lightMode?Color.rgb(235,242,228):Color.rgb(13,13,17),26));
                   TextView amountLabel = text("₹" + details.amountText(), 40, ACCENT); amountLabel.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
                   EditText amount = new EditText(this); amount.setText(details.amountText()); amount.setTextSize(28); amount.setTextColor(FG); amount.setSingleLine(true); amount.setSelectAllOnFocus(true); amount.setInputType(InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_DECIMAL); amount.setVisibility(View.GONE); amount.setContentDescription(tr("Payment amount in rupees"));
                   amountRow.addView(amountLabel); amountRow.addView(amount, new LinearLayout.LayoutParams(0, -2, 1));
@@ -1065,7 +1079,7 @@ jobs:
                           for (int j = i; j < Math.min(i + 3, labels.length); j++) {
                               String label = labels[j]; Button chip = button(categoryIcon(label) + "  " + tr(label), label.equals(category[0])); chip.setTag(label); chip.setContentDescription(tr(label) + ("hi".equals(QsLanguage.get(this)) ? " श्रेणी" : " category"));
                               LinearLayout.LayoutParams chipLp = new LinearLayout.LayoutParams(0, dp(52), 1); chipLp.setMargins(dp(3), dp(3), dp(3), dp(3)); categoryRow.addView(chip, chipLp);
-                              chip.setOnClickListener(view -> { category[0] = label; for (int a = 0; a < categories.getChildCount(); a++) { LinearLayout r = (LinearLayout) categories.getChildAt(a); for (int b = 0; b < r.getChildCount(); b++) { Button other = (Button) r.getChildAt(b); boolean active = label.equals(other.getTag()); other.setTextColor(active ? Color.BLACK : FG); other.setBackground(chipBackground(active)); } } });
+                              chip.setOnClickListener(view -> { category[0] = label; for (int a = 0; a < categories.getChildCount(); a++) { LinearLayout r = (LinearLayout) categories.getChildAt(a); for (int b = 0; b < r.getChildCount(); b++) { Button other = (Button) r.getChildAt(b); boolean active = label.equals(other.getTag()); other.setTextColor(active ? selectedForeground() : FG); other.setBackground(chipBackground(active)); } } });
                           }
                           categories.addView(categoryRow);
                       }
@@ -1075,7 +1089,7 @@ jobs:
                       LinearLayout.LayoutParams choiceLp = new LinearLayout.LayoutParams(0, dp(44), 1); choiceLp.setMargins(dp(2), 0, dp(2), 0); types.addView(choice, choiceLp);
                       choice.setOnClickListener(view -> {
                           type[0] = label; category[0] = "Uncategorised";
-                          for (int i = 0; i < types.getChildCount(); i++) { Button other = (Button) types.getChildAt(i); boolean active = label.equals(other.getTag()); other.setTextColor(active ? Color.BLACK : FG); other.setBackground(chipBackground(active)); }
+                          for (int i = 0; i < types.getChildCount(); i++) { Button other = (Button) types.getChildAt(i); boolean active = label.equals(other.getTag()); other.setTextColor(active ? selectedForeground() : FG); other.setBackground(chipBackground(active)); }
                           boolean debt = label.equals("Lent") || label.equals("Borrowed"); person.setVisibility(debt ? View.VISIBLE : View.GONE); person.setHint(tr(label.equals("Lent") ? "Who did you lend to?" : "Who did you borrow from?")); drawCategories.run();
                       });
                   }
@@ -1085,7 +1099,7 @@ jobs:
                   addCategory.setOnClickListener(view->{categoryForm.setVisibility(categoryForm.getVisibility()==View.VISIBLE?View.GONE:View.VISIBLE);if(categoryForm.getVisibility()==View.VISIBLE){categoryName.requestFocus();categoryName.post(()->((InputMethodManager)getSystemService(INPUT_METHOD_SERVICE)).showSoftInput(categoryName,InputMethodManager.SHOW_IMPLICIT));}});
                   createCategory.setOnClickListener(view->{String name=categoryName.getText().toString().trim();try{if(!CaptureCatalog.add(this,type[0],name)){categoryName.setError(tr("Choose a unique category name (up to 40 characters)."));return;}java.util.List<String> labels=panelCategories.get(type[0]);if(labels==null){labels=CaptureCatalog.labels(this,type[0]);panelCategories.put(type[0],labels);}else labels.add(name);category[0]=name;categoryName.setText("");categoryForm.setVisibility(View.GONE);((InputMethodManager)getSystemService(INPUT_METHOD_SERVICE)).hideSoftInputFromWindow(categoryName.getWindowToken(),0);drawCategories.run();}catch(RuntimeException e){categoryName.setError(tr("Could not save. Try again."));}});
                   LinearLayout footer = new LinearLayout(this); footer.setOrientation(LinearLayout.VERTICAL); footer.setPadding(dp(20),dp(8),dp(20),dp(20)); footer.setBackground(shape(BG,0)); frame.addView(footer,new LinearLayout.LayoutParams(-1,-2));
-                  TextView error = text(tr(""), 12, Color.rgb(255, 128, 128)); error.setVisibility(View.GONE); append(footer, error, 0);
+                  TextView error = text(tr(""), 12, lightMode?Color.rgb(181,45,68):Color.rgb(255,128,128)); error.setVisibility(View.GONE); append(footer, error, 0);
                   LinearLayout actions = row(); Button later = button("Later", false), save = button(item.optBoolean("demo") ? "Finish test" : "Save payment  ✓", true);
                   LinearLayout.LayoutParams actionLp = new LinearLayout.LayoutParams(0, dp(48), 1); actionLp.setMargins(dp(3), dp(6), dp(3), 0); actions.addView(later, actionLp); actions.addView(save, new LinearLayout.LayoutParams(actionLp)); append(footer, actions, 0);
                   WindowManager.LayoutParams lp = new WindowManager.LayoutParams(Math.min(dp(380), display().widthPixels - dp(24)), Math.min(dp(640), display().heightPixels - dp(80)), windowType(), WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL | WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH, PixelFormat.TRANSLUCENT);

@@ -18,6 +18,16 @@ public final class QsLanguage {
         if (!"hi".equals(language) && !"en".equals(language)) throw new IllegalArgumentException("Unsupported language");
         if (!prefs(c).edit().putString("language", language).commit()) throw new IllegalStateException("Could not save language");
     }
+    public static String colorMode(Context c) { return "light".equals(prefs(c).getString("colorMode","dark")) ? "light" : "dark"; }
+    public static void setColorMode(Context c,String mode) {
+        if(!"dark".equals(mode)&&!"light".equals(mode)) throw new IllegalArgumentException("Unsupported color mode");
+        if(!prefs(c).edit().putString("colorMode",mode).commit()) throw new IllegalStateException("Could not save color mode");
+    }
+    public static void applySystemBars(android.app.Activity activity) {
+        boolean light="light".equals(colorMode(activity));
+        androidx.core.view.WindowInsetsControllerCompat bars=new androidx.core.view.WindowInsetsControllerCompat(activity.getWindow(),activity.getWindow().getDecorView());
+        bars.setAppearanceLightStatusBars(light);bars.setAppearanceLightNavigationBars(light);
+    }
     public static String tr(Context c, String text) {
         if (text == null || !"hi".equals(get(c))) return text;
         try {
