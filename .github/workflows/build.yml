@@ -46,6 +46,7 @@ jobs:
           node tests/account-layout.cjs
           node tests/account-polish.cjs
           node tests/emi-regression.cjs
+          node tests/screen-polish.cjs
           node tests/quick-capture-fixes.cjs
           node tests/accounts-delete.cjs
           node tests/home-navigation.cjs

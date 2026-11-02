@@ -1,0 +1,23 @@
+const assert=require('assert'),{app,settle}=require('./app-inbox.cjs');
+(async()=>{
+ const a=app({savedLanguage:'en'});await settle();
+ a.eval("tx=[];pending=[];recur=[];ym=[2024,1];rng='Month';view='All'");
+ const rows=[{id:1,t:'Income',a:1000,c:'Salary',acc:'Cash',ts:new Date(2024,1,2).getTime()},{id:2,t:'Expense',a:200,c:'Food',acc:'Cash',ts:new Date(2024,1,2).getTime()},{id:3,t:'Expense',a:50,c:'Travel',acc:'Main account',ts:new Date(2024,1,29).getTime()},{id:4,t:'Expense',a:9000,c:'Bills',emi:true,acc:'Cash',ts:new Date(2024,1,2).getTime()},{id:5,t:'Lent',a:100,c:'Friend',acc:'Cash',ts:new Date(2024,1,2).getTime()}];a.c.fixtureRows=rows;a.eval('tx=fixtureRows');
+ let d=a.c.insightData();assert.equal(d.points.length,29,'Leap February has 29 daily points');assert.equal(d.income,1000);assert.equal(d.expense,250);assert.equal(d.points[28].expense,50);assert.equal(d.average,8.62);assert.equal(d.categories[0].name,'Food');
+ let html=a.c.insights();assert.match(html,/cashflow-chart|Spending by category/);assert.match(html,/<table>/);assert.doesNotMatch(html,/NaN|Infinity|undefined/);assert.match(html,/₹1,000/);
+ a.eval("view='Cash'");d=a.c.insightData();assert.equal(d.expense,200,'Insights respects the selected Home account and excludes EMI/debt');
+ a.eval("view='All';rng='Year'");d=a.c.insightData();assert.equal(d.points.length,12);assert.equal(d.expense,250);assert.equal(d.average,0.68,'Year average handles leap years');
+ a.eval("tx=[];rng='Month'");html=a.c.insights();assert.match(html,/No income or expenses in this period/);assert.doesNotMatch(html,/<polyline/,'Empty periods do not fabricate a trend');
+ a.eval("tx=[{t:'Expense',a:.2,c:'Food',ts:new Date(2024,1,2).getTime()}]");html=a.c.insights();assert.match(html,/Net flow/);assert.match(html,/₹-0.2/);assert.equal(a.c.axisMoney(.25),'₹0.25','Small amounts keep meaningful axis values');
+ a.eval("pending=[{id:70,m:'Cafe',a:25,d:'Today',ts:Date.now(),kind:'Expense'},{id:71,m:'Unknown',a:'',d:'Today',ts:Date.now()}];tx=[{id:72,t:'Income',m:'Salary',a:100,c:'Uncategorised',ts:Date.now()}];render()");html=a.nodes.get('#s-review').innerHTML;
+ assert.match(html,/aria-label="Refresh payments"[^>]*onclick="pull\(true\)"/);assert.match(html,/aria-label="Paste a bank SMS"[^>]*onclick="openPaste\(\)"/);assert.doesNotMatch(html,/>Refresh payments|>📋 Paste/);assert.match(html,/review-count">3/);assert.match(html,/openSavedReview\(72\)/);assert.match(html,/Unknown/);assert.doesNotMatch(html,/₹NaN/);
+ a.eval("tx=[{id:1,t:'Lent',a:500,settled:100,who:'Asha'},{id:2,t:'Borrowed',a:100,who:'Asha'},{id:3,t:'Borrowed',a:250,who:'Ravi'},{id:4,t:'Expense',a:9000,who:'Asha'}];pending=[];render()");
+ let people=a.c.debtPeople();assert.equal(people.length,2);assert.equal(people[0].value,300);assert.equal(people[1].value,-250);html=a.nodes.get('#s-friends').innerHTML;assert.match(html,/Lent & borrowed/);assert.match(html,/₹300/);assert.match(html,/₹250/);
+ const persist=a.c.persist;a.c.confirm=()=>true;a.c.persist=()=>false;a.c.settlePerson(0);assert.equal(a.c.debtPeople()[0].value,300,'Failed settlement rolls back');a.c.persist=persist;a.c.settlePerson(0);assert.equal(a.c.debtPeople().length,1);assert.equal(a.eval('tx[3].settled'),undefined,'Settlement only modifies actual debt entries');
+ // Year navigation updates only the chosen breakdown. No render or delayed screen replacement.
+ a.eval("recur=[{t:'Expense',emi:true,total:2400,a:100,months:24,left:24,startMonth:2026*12+10,m:'Car',acc:'Cash'}];emiYears={};homePage='emi'");
+ const screen=a.eval("$('#s-home')"),plan=a.eval("$('#emi-plan-0')"),other=a.eval("$('#emi-plan-1')");screen.scrollTop=420;const content={innerHTML:''};plan.querySelector=()=>content;plan.open=true;other.open=true;
+ let renders=0;const render=a.c.render;a.c.render=()=>renders++;a.c.shiftEmiYear(0,1);assert.equal(renders,0,'Year navigation does not rebuild the screen');assert.equal(screen.scrollTop,420);assert.equal(plan.open,true);assert.equal(other.open,true);assert.match(content.innerHTML,/2027/);a.c.shiftEmiYear(0,-1);assert.match(content.innerHTML,/2026/);a.c.render=render;
+ await a.c.chooseLanguage('hi');assert.match(a.c.debtPage(),/उधार का हिसाब/);assert.match(a.c.insights(),/ग्राफ़ की राशियाँ देखें/);
+ console.log('PASS: chart/calendar arithmetic, account and EMI filtering, empty/negative states, icon Review actions, debt settlement rollback, Hindi and in-place EMI year navigation');
+})().catch(e=>{console.error(e);process.exit(1)});
