@@ -70,6 +70,8 @@ jobs:
           java -cp /tmp/qs-motion UpdatePolicyTest
           javac -d /tmp/qs-motion native/QuickAccessPolicy.java tests/QuickAccessPolicyTest.java
           java -cp /tmp/qs-motion QuickAccessPolicyTest
+          javac -d /tmp/qs-motion native/CaptureWakePolicy.java tests/CaptureWakePolicyTest.java
+          java -cp /tmp/qs-motion CaptureWakePolicyTest
       - uses: android-actions/setup-android@v3
         with:
           packages: platform-tools
@@ -93,7 +95,7 @@ jobs:
           if [ ! -d android ]; then npx cap add android; fi
           D=android/app/src/main/java/com/quickspend/app
           mkdir -p $D
-          cp native/CaptureCatalog.java native/QuickAccessConfig.java native/QuickAccessPolicy.java native/QuickAccessOverlay.java native/QsLanguage.java native/AccountBridgePlugin.java native/UpdatePolicy.java native/UpdatePush.java native/UpdateMessagingService.java native/UpdateBridgePlugin.java $D/
+          cp native/CaptureRecovery.java native/CaptureRecoveryJob.java native/CaptureWakePolicy.java native/CaptureCatalog.java native/QuickAccessConfig.java native/QuickAccessPolicy.java native/QuickAccessOverlay.java native/QsLanguage.java native/AccountBridgePlugin.java native/UpdatePolicy.java native/UpdatePush.java native/UpdateMessagingService.java native/UpdateBridgePlugin.java $D/
           if [ -s config/google-services.json ]; then
             mkdir -p android/app/src/main/assets/cloud
             cp config/google-services.json android/app/src/main/assets/cloud/
@@ -753,9 +755,11 @@ jobs:
 
               public static boolean enabled(Context c) { return c.getSharedPreferences(PREFS, 0).getBoolean("enabled", true); }
               public static boolean running() { return instance != null; }
+              public static boolean appIsVisible() { return appVisible; }
+              private void hideUntilNextPayment() { hiddenUntilNextPayment=true; CaptureRecovery.hide(this); }
               public static void setEnabled(Context c, boolean enabled) {
                   if (!c.getSharedPreferences(PREFS, 0).edit().putBoolean("enabled", enabled).commit()) throw new IllegalStateException("Could not save floating capture preference");
-                  if (!enabled) c.stopService(new Intent(c, FloatingCaptureService.class));
+                  if (!enabled) { CaptureRecovery.cancel(c); c.stopService(new Intent(c, FloatingCaptureService.class)); }
               }
               public static void activityVisible(Context c, boolean visible) {
                   appVisible = visible;
@@ -770,12 +774,18 @@ jobs:
                   refresh(c, false);
               }
               public static void refresh(Context c, boolean newPayment) {
+                  if(newPayment) CaptureRecovery.payment(c); else CaptureRecovery.changed(c);
                   FloatingCaptureService service = instance;
                   if (service != null) service.main.post(() -> {
                       if (newPayment) service.hiddenUntilNextPayment = false;
                       service.updateOverlay();
                   });
-                  else if (newPayment && enabled(c) && Settings.canDrawOverlays(c)) recoverForPayment(c.getApplicationContext());
+                  
+              }
+              public static void recoverPending(Context c) {
+                  FloatingCaptureService service=instance;
+                  if(service!=null) service.main.post(service::updateOverlay);
+                  else recoverForPayment(c.getApplicationContext());
               }
               private static View recoveryBubble;
               private static WindowManager recoveryWindows;
@@ -784,7 +794,7 @@ jobs:
               }
               private static void startRecovery(Context c) {
                   try {
-                      ContextCompat.startForegroundService(c,new Intent(c,FloatingCaptureService.class).putExtra("newPayment",true));
+                      ContextCompat.startForegroundService(c,new Intent(c,FloatingCaptureService.class));
                       android.util.Log.i("QuickSpend","Incoming payment requested capture service recovery");
                   } catch(RuntimeException e) {
                       lastError="Floating shortcut could not start in the background. Tap the payment notification or open Review.";
@@ -794,12 +804,13 @@ jobs:
               }
               private static void recoverForPayment(Context c) {
                   new Handler(Looper.getMainLooper()).post(()->{
-                      if(instance!=null){refresh(c,true);return;}
-                      if(!enabled(c)||!Settings.canDrawOverlays(c))return;
+                      if(instance!=null){recoverPending(c);return;}
+                      if(!enabled(c)||!Settings.canDrawOverlays(c)||CaptureRecovery.hidden(c))return;
                       // Android 15+ requires a visible overlay before the overlay-permission FGS exemption applies.
                       KeyguardManager lock=(KeyguardManager)c.getSystemService(KEYGUARD_SERVICE);
                       android.os.PowerManager power=(android.os.PowerManager)c.getSystemService(POWER_SERVICE);
-                      if(Build.VERSION.SDK_INT>=35&&!appVisible&&!lock.isKeyguardLocked()&&power.isInteractive()) {
+                      if(lock.isKeyguardLocked()||!power.isInteractive()||appVisible)return;
+                      if(Build.VERSION.SDK_INT>=35) {
                           if(recoveryBubble!=null)return;
                           try {
                               recoveryWindows=(WindowManager)c.getSystemService(WINDOW_SERVICE);
@@ -808,7 +819,7 @@ jobs:
                               WindowManager.LayoutParams lp=new WindowManager.LayoutParams(size,size,WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,PixelFormat.TRANSLUCENT);lp.gravity=Gravity.TOP|Gravity.RIGHT;lp.x=16;lp.y=c.getResources().getDisplayMetrics().heightPixels/3;
                               icon.setOnClickListener(view->{Intent launch=c.getPackageManager().getLaunchIntentForPackage(c.getPackageName());if(launch!=null){launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);try{c.startActivity(launch);}catch(RuntimeException ignored){}}clearRecovery();});
                               recoveryWindows.addView(icon,lp);recoveryBubble=icon;
-                              icon.postDelayed(()->{if(recoveryBubble==icon&&enabled(c)&&Settings.canDrawOverlays(c)&&icon.getWindowVisibility()==View.VISIBLE)startRecovery(c);else clearRecovery();},100);
+                              icon.postDelayed(()->{if(recoveryBubble==icon&&enabled(c)&&!CaptureRecovery.hidden(c)&&!lock.isKeyguardLocked()&&power.isInteractive()&&!appVisible&&Settings.canDrawOverlays(c)&&icon.getWindowVisibility()==View.VISIBLE)startRecovery(c);else clearRecovery();},100);
                               icon.postDelayed(()->{if(recoveryBubble==icon)clearRecovery();},10000);
                           }catch(RuntimeException e){clearRecovery();startRecovery(c);}
                       }else startRecovery(c);
@@ -818,10 +829,12 @@ jobs:
               @Override public void onCreate() {
                   super.onCreate();
                   instance = this;
+                  hiddenUntilNextPayment=CaptureRecovery.hidden(this);
+                  CaptureRecovery.changed(this);
                   windows = (WindowManager) getSystemService(WINDOW_SERVICE);
                   applyPalette();
                   screenReceiver = new BroadcastReceiver() {
-                      @Override public void onReceive(Context context, Intent intent) { updateOverlay(); }
+                      @Override public void onReceive(Context context, Intent intent) { updateOverlay(); CaptureRecovery.changed(context); }
                   };
                   IntentFilter filter = new IntentFilter();
                   filter.addAction(Intent.ACTION_SCREEN_OFF);
@@ -905,6 +918,7 @@ jobs:
                           hidePanel();
                       }
                       showBubble(q.size());
+                      CaptureRecovery.visible(this);
                       android.util.Log.i("QuickSpend", "Capture bubble visible; pending=" + q.size());
                   } catch (RuntimeException e) {
                       lastError = "Floating shortcut is unavailable. Your payment is still available in QuickSpend.";
@@ -980,7 +994,7 @@ jobs:
                                   }
                                   else animateBubble(bubbleParams.x+dp(30) < screen.widthPixels/2 ? dp(6) : screen.widthPixels-dp(66), bubbleParams.y, false);
                               }
-                              else if (!experimental && event.getEventTime() - downTime > 650) { hiddenUntilNextPayment = true; hideAll(); Toast.makeText(FloatingCaptureService.this, tr("Shortcut hidden. Payments stay in Review."), Toast.LENGTH_SHORT).show(); }
+                              else if (!experimental && event.getEventTime() - downTime > 650) { hideUntilNextPayment(); hideAll(); Toast.makeText(FloatingCaptureService.this, tr("Shortcut hidden. Payments stay in Review."), Toast.LENGTH_SHORT).show(); }
                               else if(!experimental || event.getEventTime()-downTime<QuickAccessPolicy.HOLD_MS) view.performClick();
                               return true;
                           }
@@ -1077,7 +1091,7 @@ jobs:
                   if (bubbleMotion != null) { bubbleMotion.cancel(); bubbleMotion=null; }
                   final View target=bubble; final int fromX=bubbleParams.x, fromY=bubbleParams.y;
                   dismissingBubble=dismiss;
-                  if (dismiss) { hiddenUntilNextPayment=true; hideTether(); }
+                  if (dismiss) { hideUntilNextPayment(); hideTether(); }
                   bubbleMotion=ValueAnimator.ofFloat(0, 1);
                   bubbleMotion.setDuration(motionEnabled() ? (dismiss ? 320 : 280) : 0);
                   bubbleMotion.setInterpolator(dismiss ? new AccelerateInterpolator(1.4f) : new OvershootInterpolator(0.8f));
@@ -1187,7 +1201,7 @@ jobs:
                   });
                   close.setOnClickListener(view -> collapsePanel());
                   pencil.setOnClickListener(view -> { amountLabel.setVisibility(View.GONE); amount.setVisibility(View.VISIBLE); amount.requestFocus(); amount.post(() -> ((InputMethodManager) getSystemService(INPUT_METHOD_SERVICE)).showSoftInput(amount, InputMethodManager.SHOW_IMPLICIT)); });
-                  later.setOnClickListener(view -> { if (item.optBoolean("demo")) { try { SmsStore.complete(this, SmsStore.key(item), null); } catch (RuntimeException e) { error.setVisibility(View.VISIBLE); error.setText(tr("Could not dismiss preview. Try again.")); return; } } hiddenUntilNextPayment = true; hideAll(); Toast.makeText(this, tr("Saved for later in Review"), Toast.LENGTH_SHORT).show(); });
+                  later.setOnClickListener(view -> { if (item.optBoolean("demo")) { try { SmsStore.complete(this, SmsStore.key(item), null); } catch (RuntimeException e) { error.setVisibility(View.VISIBLE); error.setText(tr("Could not dismiss preview. Try again.")); return; } } hideUntilNextPayment(); hideAll(); Toast.makeText(this, tr("Saved for later in Review"), Toast.LENGTH_SHORT).show(); });
                   save.setOnClickListener(view -> {
                       if (item.optBoolean("demo")) {
                           try { SmsStore.complete(this, SmsStore.key(item), null); hidePanel(); updateOverlay(); Toast.makeText(this, tr("Preview complete. No expense was added."), Toast.LENGTH_SHORT).show(); } catch (RuntimeException e) { error.setVisibility(View.VISIBLE); error.setText(tr("Could not finish preview. Try again.")); } return;
@@ -1274,6 +1288,7 @@ jobs:
               a + 'name': 'android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE',
               a + 'value': 'User-enabled floating expense capture. After a bank payment SMS, a movable overlay lets the user categorise and save that payment over their current app. An ongoing notification exposes a Pause action; the overlay is hidden on the lock screen. No screen content is read.'
           })
+          ET.SubElement(app, 'service', {a + 'name': '.CaptureRecoveryJob', a + 'permission': 'android.permission.BIND_JOB_SERVICE', a + 'exported': 'true'})
           ET.indent(root)
           p.write_text(ET.tostring(root, encoding='unicode'))
           PY
@@ -1456,9 +1471,11 @@ jobs:
                   return False
           assert has_special_use(service_type), f'Overlay service specialUse flag missing: {service_type!r}'
           assert service.find('property') is not None, 'Foreground service use-case explanation missing'
+          recovery = next(node for node in root.find('application').findall('service') if node.get(ns + 'name', '').endswith('CaptureRecoveryJob'))
+          assert recovery.get(ns + 'permission') == 'android.permission.BIND_JOB_SERVICE' and recovery.get(ns + 'exported') == 'true', 'Recovery job must only be bindable by Android'
           with ZipFile('android/app/build/outputs/bundle/release/app-release.aab') as archive:
               dex = [archive.read(n) for n in archive.namelist() if n.startswith('base/dex/') and n.endswith('.dex')]
-              for cls in (b'Lcom/quickspend/app/SmsBridgePlugin;', b'Lcom/quickspend/app/SmsReceiver;', b'Lcom/quickspend/app/FloatingCaptureService;', b'Lcom/quickspend/app/SmsStore;', b'Lcom/quickspend/app/PaymentParser;', b'Lcom/quickspend/app/CaptureCatalog;', b'Lcom/quickspend/app/QuickAccessConfig;', b'Lcom/quickspend/app/QuickAccessPolicy;', b'Lcom/quickspend/app/QuickAccessOverlay;', b'Lcom/quickspend/app/CaptureMotion;', b'Lcom/quickspend/app/QsLanguage;', b'Lcom/quickspend/app/AccountBridgePlugin;', b'Lcom/quickspend/app/UpdateBridgePlugin;', b'Lcom/quickspend/app/UpdateMessagingService;'):
+              for cls in (b'Lcom/quickspend/app/SmsBridgePlugin;', b'Lcom/quickspend/app/SmsReceiver;', b'Lcom/quickspend/app/FloatingCaptureService;', b'Lcom/quickspend/app/SmsStore;', b'Lcom/quickspend/app/PaymentParser;', b'Lcom/quickspend/app/CaptureCatalog;', b'Lcom/quickspend/app/QuickAccessConfig;', b'Lcom/quickspend/app/QuickAccessPolicy;', b'Lcom/quickspend/app/QuickAccessOverlay;', b'Lcom/quickspend/app/CaptureRecovery;', b'Lcom/quickspend/app/CaptureRecoveryJob;', b'Lcom/quickspend/app/CaptureWakePolicy;', b'Lcom/quickspend/app/CaptureMotion;', b'Lcom/quickspend/app/QsLanguage;', b'Lcom/quickspend/app/AccountBridgePlugin;', b'Lcom/quickspend/app/UpdateBridgePlugin;', b'Lcom/quickspend/app/UpdateMessagingService;'):
                   assert any(cls in data for data in dex), 'Bundle missing native class: ' + cls.decode()
               for method in ('quickAccessSettings', 'setQuickAccessSettings', 'overlayStatus', 'openOverlaySettings', 'setOverlayEnabled', 'testOverlay', 'setLanguage'):
                   assert any(method.encode() + bytes([0]) in data for data in dex), 'Native floating method missing: ' + method
@@ -1482,4 +1499,5 @@ jobs:
           path: dist/
           if-no-files-found: error
           retention-days: 14
+
 
