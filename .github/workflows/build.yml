@@ -45,6 +45,7 @@ jobs:
           node tests/budgets.cjs
           node tests/account-layout.cjs
           node tests/account-polish.cjs
+          node tests/ftue.cjs
           node tests/dated-emi.cjs
           node tests/emi-regression.cjs
           node tests/appearance-nav.cjs
@@ -89,7 +90,7 @@ jobs:
           fi
           mkdir -p www/assets www/locales && cp index.html www/
           cp locales/hi.json www/locales/
-          cp assets/quickspend-icon.png www/assets/
+          cp assets/quickspend-icon.png assets/ftue-wallet-v1.png assets/ftue.css www/assets/
           npm install
           npm install @capacitor/local-notifications@^6.0.0
           if [ ! -d android ]; then npx cap add android; fi
@@ -1126,11 +1127,11 @@ jobs:
                   PaymentParser details = PaymentParser.parse(item.optString("from"), item.optString("body"));
                   LinearLayout frame = new LinearLayout(this); frame.setOrientation(LinearLayout.VERTICAL);
                   ScrollView scroll = new ScrollView(this); scroll.setFillViewport(false); scroll.setVerticalScrollBarEnabled(false); scroll.setClipToOutline(true);
-                  GradientDrawable card = new GradientDrawable(GradientDrawable.Orientation.TL_BR, lightMode?new int[]{Color.WHITE,Color.rgb(245,248,240)}:new int[]{Color.rgb(32,32,42), Color.rgb(18,18,23)}); card.setCornerRadius(dp(36)); card.setStroke(dp(1), lightMode?Color.rgb(207,218,198):Color.rgb(49,49,60)); frame.setBackground(card); frame.setClipToOutline(true); frame.setElevation(dp(16));
+                  GradientDrawable card = new GradientDrawable(GradientDrawable.Orientation.TL_BR, lightMode?new int[]{Color.WHITE,Color.rgb(255,244,233)}:new int[]{Color.rgb(40,32,29), Color.rgb(18,18,23)}); card.setCornerRadius(dp(36)); card.setStroke(dp(1), lightMode?Color.rgb(207,218,198):Color.rgb(49,49,60)); frame.setBackground(card); frame.setClipToOutline(true); frame.setElevation(dp(16));
                   frame.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));
                   LinearLayout root = new LinearLayout(this); root.setOrientation(LinearLayout.VERTICAL); root.setPadding(dp(20), dp(18), dp(20), dp(8)); scroll.addView(root);
                   LinearLayout brand = row(); ImageView logo = new ImageView(this); logo.setImageResource(R.drawable.qs_brand_icon); logo.setBackground(shape(BG, 10)); logo.setClipToOutline(true); brand.addView(logo, new LinearLayout.LayoutParams(dp(28), dp(28)));
-                  TextView brandName = text(tr("QUICKSPEND"), 11, ACCENT); brandName.setLetterSpacing(.16f); LinearLayout.LayoutParams brandLp = new LinearLayout.LayoutParams(-2,-2); brandLp.leftMargin=dp(10); brand.addView(brandName, brandLp); append(root, brand, 0);
+                  TextView brandName = text(tr("QUICKSPEND"), 11, lightMode?Color.rgb(161,67,12):Color.rgb(255,157,77)); brandName.setLetterSpacing(.16f); LinearLayout.LayoutParams brandLp = new LinearLayout.LayoutParams(-2,-2); brandLp.leftMargin=dp(10); brand.addView(brandName, brandLp); append(root, brand, 0);
                   LinearLayout header = row(); TextView title = text(tr(item.optBoolean("demo") ? "Try quick capture" : "Quick capture"), 19, FG); title.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
                   header.addView(title, new LinearLayout.LayoutParams(0, -2, 1)); Button fullscreen = button("⛶", false); fullscreen.setContentDescription(tr("Expand quick capture to fullscreen")); header.addView(fullscreen, new LinearLayout.LayoutParams(dp(44),dp(44))); Button close = button("×", false); close.setContentDescription(tr("Close quick capture")); header.addView(close, new LinearLayout.LayoutParams(dp(44), dp(44))); append(root, header, 10);
                   TextView merchant = text(item.optBoolean("demo") ? tr("Preview only · no expense will be saved") : details.merchant, 13, MUTED); append(root, merchant, 8);
@@ -1499,5 +1500,6 @@ jobs:
           path: dist/
           if-no-files-found: error
           retention-days: 14
+
 
 
