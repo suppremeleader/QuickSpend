@@ -14,18 +14,32 @@ class ManifestConfigTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             manifest = Path(directory) / 'android/app/src/main/AndroidManifest.xml'
             manifest.parent.mkdir(parents=True)
-            manifest.write_text('<manifest xmlns:android="http://schemas.android.com/apk/res/android"><application><activity android:name=".MainActivity"/></application></manifest>')
+            manifest.write_text('<manifest xmlns:android="http://schemas.android.com/apk/res/android"><uses-permission android:name="android.permission.RECORD_AUDIO"/><uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS"/><uses-feature android:name="android.hardware.microphone" android:required="true"/><application><activity android:name=".MainActivity"/></application></manifest>')
             script = 'from pathlib import Path\nimport xml.etree.ElementTree as ET\n' + block + '\n' + textwrap.dedent('''
                 root = ET.parse(p).getroot()
                 ns = '{http://schemas.android.com/apk/res/android}'
                 job = next(x for x in root.find('application').findall('service') if x.get(ns+'name') == '.CaptureRecoveryJob')
-                activity = root.find('application').find('activity')
-                assert activity.get(ns+'enableOnBackInvokedCallback') == 'true'
+                assert root.find('application').find('activity').get(ns+'enableOnBackInvokedCallback') == 'true'
+                permissions = {x.get(ns+'name') for x in root.findall('uses-permission')}
+                assert not any(x.get(ns+'name') == 'android.hardware.microphone' for x in root.findall('uses-feature'))
+                assert 'android.permission.RECORD_AUDIO' not in permissions
+                assert 'android.permission.MODIFY_AUDIO_SETTINGS' not in permissions
                 assert job.get(ns+'permission') == 'android.permission.BIND_JOB_SERVICE'
                 assert job.get(ns+'exported') == 'true'
                 assert not any(x.get(ns+'name') == 'android.permission.RECEIVE_BOOT_COMPLETED' for x in root.findall('uses-permission'))
             ''')
             subprocess.run(['python3', '-c', script], cwd=directory, check=True, capture_output=True, text=True)
+
+    def test_release_permission_checks_match_deferred_microphone(self):
+        workflow = (Path(__file__).resolve().parents[1] / '.github/workflows/build.yml').read_text()
+        start = workflow.index("          permissions = {p.get(ns + 'name')")
+        block = textwrap.dedent(workflow[start:workflow.index('          service = next', start)])
+        header = "import xml.etree.ElementTree as ET\nns='{http://schemas.android.com/apk/res/android}'\n"
+        xml = '<manifest xmlns:android="http://schemas.android.com/apk/res/android">' + ''.join('<uses-permission android:name="android.permission.' + p + '"/>' for p in ['POST_NOTIFICATIONS', 'RECEIVE_SMS', 'SYSTEM_ALERT_WINDOW', 'FOREGROUND_SERVICE', 'FOREGROUND_SERVICE_SPECIAL_USE']) + '</manifest>'
+        subprocess.run(['python3', '-c', header + 'root=ET.fromstring(' + repr(xml) + ')\n' + block], check=True, capture_output=True, text=True)
+        with self.assertRaises(subprocess.CalledProcessError):
+            with_mic = xml.replace('</manifest>', '<uses-permission android:name="android.permission.RECORD_AUDIO"/></manifest>')
+            subprocess.run(['python3', '-c', header + 'root=ET.fromstring(' + repr(with_mic) + ')\n' + block], check=True, capture_output=True, text=True)
 
     def test_preserves_android_prefix_for_manifest_merger(self):
         workflow = (Path(__file__).resolve().parents[1] / '.github/workflows/build.yml').read_text()
