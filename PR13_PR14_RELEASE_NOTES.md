@@ -10,3 +10,7 @@
 Validation: 19 JavaScript suites and 10 Python tests pass locally. CI exercises real Chromium photo compression, voice recording, save/remove and microphone cleanup in addition to existing UI tests, native policies, signed compilation and package verification. Physical Android microphone permission, recording/playback and picture picker tests remain pending.
 
 PR #12 remains separate and unmerged. Its native Back dispatcher and source-badge refinements are not included in these two PRs.
+
+## Device compatibility correction
+
+Declared microphone hardware optional while retaining on-demand audio permission. Voice notes work where a microphone is available; other app features remain available without one. Added regression and signed-manifest checks to prevent accidental microphone-based Play device filtering. Re-upload the corrected bundle and re-check Play Console’s affected-device report; the exact six-device recovery cannot be confirmed from the screenshot alone.
