@@ -14,16 +14,15 @@ class ManifestConfigTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             manifest = Path(directory) / 'android/app/src/main/AndroidManifest.xml'
             manifest.parent.mkdir(parents=True)
-            manifest.write_text('<manifest xmlns:android="http://schemas.android.com/apk/res/android"><uses-feature android:name="android.hardware.microphone" android:required="true"/><application><activity android:name=".MainActivity"/></application></manifest>')
+            manifest.write_text('<manifest xmlns:android="http://schemas.android.com/apk/res/android"><uses-permission android:name="android.permission.RECORD_AUDIO"/><uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS"/><uses-feature android:name="android.hardware.microphone" android:required="true"/><application><activity android:name=".MainActivity"/></application></manifest>')
             script = 'from pathlib import Path\nimport xml.etree.ElementTree as ET\n' + block + '\n' + textwrap.dedent('''
                 root = ET.parse(p).getroot()
                 ns = '{http://schemas.android.com/apk/res/android}'
                 job = next(x for x in root.find('application').findall('service') if x.get(ns+'name') == '.CaptureRecoveryJob')
                 permissions = {x.get(ns+'name') for x in root.findall('uses-permission')}
-                microphone = next(x for x in root.findall('uses-feature') if x.get(ns+'name') == 'android.hardware.microphone')
-                assert microphone.get(ns+'required') == 'false'
-                assert 'android.permission.RECORD_AUDIO' in permissions
-                assert 'android.permission.MODIFY_AUDIO_SETTINGS' in permissions
+                assert not any(x.get(ns+'name') == 'android.hardware.microphone' for x in root.findall('uses-feature'))
+                assert 'android.permission.RECORD_AUDIO' not in permissions
+                assert 'android.permission.MODIFY_AUDIO_SETTINGS' not in permissions
                 assert job.get(ns+'permission') == 'android.permission.BIND_JOB_SERVICE'
                 assert job.get(ns+'exported') == 'true'
                 assert not any(x.get(ns+'name') == 'android.permission.RECEIVE_BOOT_COMPLETED' for x in root.findall('uses-permission'))

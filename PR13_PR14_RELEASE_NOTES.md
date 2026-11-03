@@ -14,3 +14,7 @@ PR #12 remains separate and unmerged. Its native Back dispatcher and source-badg
 ## Device compatibility correction
 
 Declared microphone hardware optional while retaining on-demand audio permission. Voice notes work where a microphone is available; other app features remain available without one. Added regression and signed-manifest checks to prevent accidental microphone-based Play device filtering. Re-upload the corrected bundle and re-check Play Console’s affected-device report; the exact six-device recovery cannot be confirmed from the screenshot alone.
+
+## Current release: voice recording deferred
+
+Removed new voice-recording controls and microphone/audio-settings permissions at user request. Text and compressed picture notes remain available. Existing voice recordings remain playable, removable and included in backups; no saved attachments are deleted. The manifest generator removes stale microphone permissions/features, and the signed bundle is checked for their absence. Voice recording is now a low-priority future idea alongside Gen Z language mode. Use this replacement build instead of build #65 or #66.
