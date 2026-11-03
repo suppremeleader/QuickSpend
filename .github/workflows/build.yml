@@ -463,6 +463,9 @@ jobs:
                 nm.createNotificationChannel(new android.app.NotificationChannel(SmsReceiver.CH, QsLanguage.tr(this,"Payments"), android.app.NotificationManager.IMPORTANCE_HIGH));
               }
               UpdatePush.configure(this);
+              getOnBackPressedDispatcher().addCallback(this,new androidx.activity.OnBackPressedCallback(true) {
+                @Override public void handleOnBackPressed() { routeSystemBack(); }
+              });
               grab(getIntent());
             }
 
@@ -489,6 +492,21 @@ jobs:
             public void onPause() {
               FloatingCaptureService.activityVisible(this, false);
               super.onPause();
+            }
+
+            private boolean backInFlight;
+            private void routeSystemBack() {
+              if(backInFlight || getBridge()==null || getBridge().getWebView()==null)return;
+              backInFlight=true;
+              try {
+                getBridge().getWebView().evaluateJavascript(
+                  "Boolean(window.quickSpendSystemBack && window.quickSpendSystemBack())",
+                  handled -> {
+                    backInFlight=false;
+                    if("false".equals(handled) && !moveTaskToBack(true))finish();
+                  }
+                );
+              } catch(RuntimeException e) { backInFlight=false; }
             }
 
             private void grab(Intent i) {
@@ -1301,6 +1319,7 @@ jobs:
               ET.SubElement(f, 'action', {a + 'name': 'android.provider.Telephony.SMS_RECEIVED'})
           activity = next((node for node in app.findall('activity') if node.get(a + 'name', '').endswith('MainActivity')), None)
           assert activity is not None, 'Cannot find the main activity'
+          activity.set(a + 'enableOnBackInvokedCallback', 'true')
           if not any(node.get(a + 'name') == 'android.intent.action.SEND' for node in activity.findall('./intent-filter/action')):
               f = ET.SubElement(activity, 'intent-filter')
               ET.SubElement(f, 'action', {a + 'name': 'android.intent.action.SEND'})
@@ -1366,6 +1385,7 @@ jobs:
           assert (source / 'SmsBridgePlugin.java').is_file(), 'SmsBridgePlugin source is missing'
           assert (source / 'SmsReceiver.java').is_file(), 'SmsReceiver source is missing'
           assert 'registerPlugin(SmsBridgePlugin.class)' in (source / 'MainActivity.java').read_text(), 'Activity plugin registration is missing'
+          assert 'getOnBackPressedDispatcher().addCallback' in (source / 'MainActivity.java').read_text(), 'Native predictive Back handler missing'
           PY_CHECK
           python3 - <<'PY_CONFIG'
           from pathlib import Path

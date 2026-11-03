@@ -19,6 +19,8 @@ class ManifestConfigTest(unittest.TestCase):
                 root = ET.parse(p).getroot()
                 ns = '{http://schemas.android.com/apk/res/android}'
                 job = next(x for x in root.find('application').findall('service') if x.get(ns+'name') == '.CaptureRecoveryJob')
+                activity = root.find('application').find('activity')
+                assert activity.get(ns+'enableOnBackInvokedCallback') == 'true'
                 assert job.get(ns+'permission') == 'android.permission.BIND_JOB_SERVICE'
                 assert job.get(ns+'exported') == 'true'
                 assert not any(x.get(ns+'name') == 'android.permission.RECEIVE_BOOT_COMPLETED' for x in root.findall('uses-permission'))
@@ -53,3 +55,4 @@ class ManifestConfigTest(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
