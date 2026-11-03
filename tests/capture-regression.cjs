@@ -28,7 +28,7 @@ function setup(snapshot,{storageWorks=true}={}){
  // Exercise the actual Review Save function, including local-storage failure.
  const saveCode=html.slice(html.indexOf('function save(){'),html.indexOf('const MN='));
  function saving(works=true){
-  const c={L:x=>x,cur:{id:1,m:'Shop',a:125,type:'Expense',cat:'Food',sourceKey:'review-save',acc:'Main'},tx:[],pending:[{id:1,sourceKey:'review-save'}],recur:[],memory:{},sid:200,CATS:{Expense:[['','Food']]},SB:()=>({completeSms:async()=>{c.completed++}}),persist:()=>works,closeSheet:()=>{c.closed++},render(){},paint(){},fd:()=> '31 Oct',alert:()=>{c.alerted++},completed:0,closed:0,alerted:0};
+  const c={noteRecorder:null,noteRequesting:false,noteBusy:false,noteAttachment:()=>'',noteMessage(){},L:x=>x,cur:{id:1,m:'Shop',a:125,type:'Expense',cat:'Food',sourceKey:'review-save',acc:'Main'},tx:[],pending:[{id:1,sourceKey:'review-save'}],recur:[],memory:{},sid:200,CATS:{Expense:[['','Food']]},SB:()=>({completeSms:async()=>{c.completed++}}),persist:()=>works,closeSheet:()=>{c.closed++},render(){},paint(){},fd:()=> '31 Oct',alert:()=>{c.alerted++},completed:0,closed:0,alerted:0};
   vm.createContext(c);vm.runInContext(saveCode,c);return c;
  }
  let s=saving();s.save();assert.equal(s.tx.length,1);assert.equal(s.pending.length,0);assert.equal(s.completed,1);s.save();assert.equal(s.tx.length,1,'Repeated Save must not duplicate');
