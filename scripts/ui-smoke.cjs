@@ -17,7 +17,13 @@ const {chromium}=require(process.env.PLAYWRIGHT_MODULE||'playwright'),assert=req
  await page.locator('#s-home button').filter({hasText:'See all'}).click();await page.locator('#history-search').fill('Weekend lunch');assert.equal(await page.locator('#history-results .history-row').count(),1);assert.equal(await page.locator('#history-search').inputValue(),'Weekend lunch');assert.equal(await page.locator('#tabs').isVisible(),false);
  await page.getByRole('button',{name:'Clear filters',exact:true}).click();assert.equal(await page.locator('#history-results .history-row').count(),12);await page.locator('#history-type').selectOption('Income');assert.equal(await page.locator('#history-results .history-row').count(),4);await page.getByRole('button',{name:'Clear filters',exact:true}).click();await page.screenshot({animations:'disabled',path:'ui-smoke-output/history-dark.png'});
  await page.evaluate(async()=>{await setColorMode('light');closeSheet()});await page.screenshot({animations:'disabled',path:'ui-smoke-output/history-light.png'});
- await page.getByRole('button',{name:'Back',exact:true}).click();await page.locator('#s-home.on').waitFor();await page.evaluate(()=>{ob=0;showOb()});assert.equal(await page.locator('#onb img').count(),0);await page.screenshot({animations:'disabled',path:'ui-smoke-output/setup.png'});
+ await page.getByRole('button',{name:'Back',exact:true}).click();await page.locator('#s-home.on').waitFor();
+ await page.locator('#s-home button').filter({hasText:'See all'}).click();await page.locator('#history-results .history-row').first().click();await page.locator('#sheet.on').waitFor();
+ await page.evaluate(()=>history.back());await page.waitForFunction(()=>!document.querySelector('#sheet').classList.contains('on'));assert.equal(await page.locator('#s-history.on').count(),1,'System Back closes editor before history');
+ await page.evaluate(()=>history.back());await page.locator('#s-home.on').waitFor();
+ await page.locator('[data-t="insights"]').click();await page.evaluate(()=>history.back());await page.locator('#s-home.on').waitFor();
+ await page.locator('.profile-settings').first().click();await page.locator('#sheet.on').waitFor();await page.evaluate(()=>history.back());await page.waitForFunction(()=>!document.querySelector('#sheet').classList.contains('on'));
+ await page.evaluate(()=>{ob=0;showOb()});assert.equal(await page.locator('#onb img').count(),0);await page.screenshot({animations:'disabled',path:'ui-smoke-output/setup.png'});
  const overflow=await page.locator('#onb').evaluate(el=>el.scrollWidth>el.clientWidth+1);assert.equal(overflow,false,'Setup must fit phone width');assert.deepEqual(errors,[]);
  console.log('PASS: Chromium history search/filter/edit routes, navigation scroll reset, text-only setup, Insights cleanup, dark/light screenshots and no runtime errors');
  }finally{await browser.close()}

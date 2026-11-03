@@ -59,7 +59,7 @@ const{app,settle}=require('./app-inbox.cjs');
  a.c.confirm=()=>true;a.c.deleteTransaction(1002);assert.equal(a.eval('tx.some(x=>x.id===1002)'),false);assert.equal(a.eval('accountTotals("All").bal'),1000,'Deleting an expense immediately restores the balance');
  a.eval("tx.push({id:1003,t:'Expense',m:'Review me',a:50,c:'Uncategorised',ts:Date.now(),acc:'Main account'});render()");a.c.openSavedReview(1003);assert.match(a.nodes.get('#sheet').innerHTML,/deleteTransaction\(1003\)/,'Saved Review entries expose delete');
  a.eval("homePage='emi';render()");assert.doesNotMatch(a.nodes.get('#s-home').innerHTML,/onclick="openRec\(\)">\+ Add a plan/,'EMI screen no longer shows a plus add button');
- const source=fs.readFileSync(path.join(__dirname,'../index.html'),'utf8');assert.match(source,/t\.dataset\.t==='home'\)\{homePage='overview';render\(\)\}/,'Returning from another bottom tab resets the Home section');
+ a.eval("homePage='emi';currentTab='insights'");a.c.navigateTab('home');assert.equal(a.eval('homePage'),'overview','Returning from another bottom tab resets the Home section');
  console.log('PASS: Settings remain accessible; Home, Savings and EMI flow, balance isolation and reset navigation work.');
 })().catch(error=>{console.error(error);process.exit(1)});
 
