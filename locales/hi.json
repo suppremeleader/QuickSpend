@@ -517,5 +517,6 @@
   "Hold the bubble, then pull away from the category you want. Release to launch into the highlighted category. A short pull cancels. Drag without holding to the bottom close target to keep the payment in Review.": "बबल दबाकर रखें, फिर चुनी श्रेणी से उल्टी ओर खींचें। छोड़ने पर हाइलाइट की गई श्रेणी में सेव होगा। हल्का खींचने पर रद्द होगा। बिना दबाए नीचे × तक खींचने पर भुगतान समीक्षा में रहेगा।",
   "Existing EMI": "मौजूदा EMI",
   "Automated entry": "अपने आप दर्ज हुआ",
-  "Manual entry": "आपने दर्ज किया"
+  "Manual entry": "आपने दर्ज किया",
+  "Add new EMI": "नई EMI जोड़ें"
 }

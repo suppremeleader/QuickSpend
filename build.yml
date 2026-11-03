@@ -349,6 +349,22 @@ jobs:
               super.onPause();
             }
 
+            @Override
+            public void onBackPressed() {
+              if (bridge == null || bridge.getWebView() == null) {
+                super.onBackPressed();
+                return;
+              }
+              bridge.getWebView().evaluateJavascript(
+                "window.quickSpendSystemBack ? String(window.quickSpendSystemBack()) : 'false'",
+                handled -> { if (!"\"true\"".equals(handled)) exitFromHome(); }
+              );
+            }
+
+            private void exitFromHome() {
+              super.onBackPressed();
+            }
+
             private void grab(Intent i) {
               if (i == null || !Intent.ACTION_SEND.equals(i.getAction())) return;
               String t = i.getStringExtra(Intent.EXTRA_TEXT);
