@@ -56,6 +56,7 @@ jobs:
           node tests/update-ui.cjs
           node tests/quick-access.cjs
           node tests/transaction-history.cjs
+          node tests/back-navigation.cjs
           python3 -m unittest discover -s tests -p "test_release_watch.py"
           python3 -m unittest discover -s tests -p "test_manifest_config.py"
       - name: Check phone layouts in Chromium
