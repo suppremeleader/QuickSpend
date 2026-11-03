@@ -1396,7 +1396,7 @@ jobs:
           assert 'distributionSha256Sum=' not in s, 'Update Gradle checksum before changing the wrapper'
           wrapper.write_text(s)
           raw = os.environ.get('INPUT_VERSION_CODE', '').strip()
-          code = int(raw) if raw else max(1055, 1000 + int(os.environ['GITHUB_RUN_NUMBER']))
+          code = int(raw) if raw else max(1069, 1000 + int(os.environ['GITHUB_RUN_NUMBER']))
           assert 0 < code <= 2100000000, 'versionCode must be a positive Android version code'
           version = os.environ.get('INPUT_VERSION_NAME', '').strip() or json.loads(Path('package.json').read_text())['version'] + '.' + os.environ['GITHUB_RUN_NUMBER']
           assert re.fullmatch(r'[A-Za-z0-9._+-]{1,80}', version), 'Invalid version name'
@@ -1525,15 +1525,21 @@ jobs:
               assert 'base/assets/public/assets/quickspend-icon.png' in archive.namelist(), 'Web icon asset missing'
               html = archive.read('base/assets/public/index.html').decode()
               assert 'nativePromise' in html and 'floating-capture-11' in html, 'Outdated floating-capture HTML bridge'
+              assert 'id="note-picture"' in html and 'function addNotePicture(' in html, 'PR 14 picture-note controls missing from packaged app'
+              assert 'emi-entry-plans' in html and 'function selectEmiPlan(' in html, 'PR 13 existing EMI selection missing from packaged app'
+              assert "<span>${L('Existing EMI')}</span>" not in html, 'PR 13 duplicate EMI heading has returned'
+              assert 'async function toggleVoiceNote' not in html and 'getUserMedia' not in html, 'Voice recording must remain deferred'
+
               assert any(n.startswith('META-INF/') and n.upper().endswith(('.RSA', '.DSA', '.EC')) for n in archive.namelist()), 'Bundle has no signing certificate'
           meta = json.loads(Path('release-metadata.json').read_text())
           assert int(root.get(ns + 'versionCode')) == meta['versionCode'], 'Version code mismatch'
           meta['verification'] = 'passed'
+          meta['releaseChecks'] = {'pr13EmiHeading': 'passed', 'pr14PictureNotes': 'passed', 'voiceRecordingDeferred': 'passed'}
           Path('dist/build-evidence.json').write_text(json.dumps(meta, indent=2))
           print('VERIFIED: signed release AAB, API 36, SMS bridge, native floating capture, receiver, permissions and version code.')
           PY_VERIFY
-          cp "$AAB" dist/quickspend-release.aab
-          sha256sum dist/quickspend-release.aab > dist/SHA256SUMS.txt
+          cp "$AAB" "dist/quickspend-build-${GITHUB_RUN_NUMBER}.aab"
+          sha256sum "dist/quickspend-build-${GITHUB_RUN_NUMBER}.aab" > dist/SHA256SUMS.txt
       - uses: actions/upload-artifact@v4
         with:
           name: quickspend-play-bundle-${{ github.run_number }}

@@ -23,11 +23,13 @@ const {chromium}=require(process.env.PLAYWRIGHT_MODULE||'playwright'),assert=req
  await page.evaluate(()=>history.back());await page.locator('#s-home.on').waitFor();
  await page.locator('[data-t="insights"]').click();await page.evaluate(()=>history.back());await page.locator('#s-home.on').waitFor();
  await page.locator('.profile-settings').first().click();await page.locator('#sheet.on').waitFor();await page.evaluate(()=>history.back());await page.waitForFunction(()=>!document.querySelector('#sheet').classList.contains('on'));
- await page.evaluate(()=>openSheet({manual:true,m:'Receipt test',a:25}));
+ await page.evaluate(()=>{const now=new Date(),month=now.getFullYear()*12+now.getMonth();recur=[{t:'Expense',m:'Car EMI test',a:100,total:1200,months:12,left:12,startMonth:month,last:month,day:1,emi:true,acc:'Main account'}];openSheet({manual:true,m:'Receipt test',a:25})});
+ assert.equal(await page.locator('#sheet .hd > span').filter({hasText:'🔁 EMI'}).count(),1,'PR 13 has exactly one EMI heading');
+ assert.equal(await page.getByText('Existing EMI',{exact:true}).count(),0);assert.equal(await page.locator('#sheet .emi-entry-plans').getByRole('button',{name:/Car EMI test/}).count(),1);
  await page.locator('#note-picture').setInputFiles({name:'receipt.png',mimeType:'image/png',buffer:fs.readFileSync('assets/quickspend-icon.png')});
  await page.waitForFunction(()=>!!cur.photo&&!noteBusy);
  assert.equal(await page.getByRole('button',{name:'🎙️ Voice note',exact:true}).count(),0,'Recording remains deferred');
- assert.equal(await page.locator('#sheet .note-attachment img').count(),1);await page.screenshot({animations:'disabled',path:'ui-smoke-output/note-picture.png'});
+ assert.equal(await page.locator('#sheet .note-attachment img').count(),1);await page.screenshot({animations:'disabled',path:'ui-smoke-output/note-picture.png'});await page.locator('#sheet .emi-entry-plans').scrollIntoViewIfNeeded();await page.screenshot({animations:'disabled',path:'ui-smoke-output/entry-emi.png'});
  await page.locator('#sheet .save').click();await page.waitForFunction(()=>!document.querySelector('#sheet').classList.contains('on'));
  assert.equal(await page.evaluate(()=>!!tx.find(x=>x.m==='Receipt test')?.photo),true);
  await page.evaluate(()=>openTransactionEdit(tx.find(x=>x.m==='Receipt test').id));await page.getByRole('button',{name:'Remove picture',exact:true}).click();await page.locator('#sheet .save').click();await page.waitForFunction(()=>!document.querySelector('#sheet').classList.contains('on'));
