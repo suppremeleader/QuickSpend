@@ -464,6 +464,9 @@ jobs:
                 nm.createNotificationChannel(new android.app.NotificationChannel(SmsReceiver.CH, QsLanguage.tr(this,"Payments"), android.app.NotificationManager.IMPORTANCE_HIGH));
               }
               UpdatePush.configure(this);
+              getOnBackPressedDispatcher().addCallback(this,new androidx.activity.OnBackPressedCallback(true) {
+                @Override public void handleOnBackPressed() { routeSystemBack(); }
+              });
               grab(getIntent());
             }
 
@@ -490,6 +493,21 @@ jobs:
             public void onPause() {
               FloatingCaptureService.activityVisible(this, false);
               super.onPause();
+            }
+
+            private boolean backInFlight;
+            private void routeSystemBack() {
+              if(backInFlight || getBridge()==null || getBridge().getWebView()==null)return;
+              backInFlight=true;
+              try {
+                getBridge().getWebView().evaluateJavascript(
+                  "Boolean(window.quickSpendSystemBack && window.quickSpendSystemBack())",
+                  handled -> {
+                    backInFlight=false;
+                    if("false".equals(handled) && !moveTaskToBack(true))finish();
+                  }
+                );
+              } catch(RuntimeException e) { backInFlight=false; }
             }
 
             private void grab(Intent i) {
@@ -1309,6 +1327,7 @@ jobs:
               ET.SubElement(f, 'action', {a + 'name': 'android.provider.Telephony.SMS_RECEIVED'})
           activity = next((node for node in app.findall('activity') if node.get(a + 'name', '').endswith('MainActivity')), None)
           assert activity is not None, 'Cannot find the main activity'
+          activity.set(a + 'enableOnBackInvokedCallback', 'true')
           if not any(node.get(a + 'name') == 'android.intent.action.SEND' for node in activity.findall('./intent-filter/action')):
               f = ET.SubElement(activity, 'intent-filter')
               ET.SubElement(f, 'action', {a + 'name': 'android.intent.action.SEND'})
@@ -1374,6 +1393,7 @@ jobs:
           assert (source / 'SmsBridgePlugin.java').is_file(), 'SmsBridgePlugin source is missing'
           assert (source / 'SmsReceiver.java').is_file(), 'SmsReceiver source is missing'
           assert 'registerPlugin(SmsBridgePlugin.class)' in (source / 'MainActivity.java').read_text(), 'Activity plugin registration is missing'
+          assert 'getOnBackPressedDispatcher().addCallback' in (source / 'MainActivity.java').read_text(), 'Native predictive Back handler missing'
           PY_CHECK
           python3 - <<'PY_CONFIG'
           from pathlib import Path
@@ -1495,6 +1515,8 @@ jobs:
           assert root.get('package') == 'com.quickspend.app', 'Unexpected application ID'
           assert int(root.find('uses-sdk').get(ns + 'targetSdkVersion')) >= 36, 'Target API must be at least 36'
           assert root.find('application').get(ns + 'debuggable', 'false') == 'false', 'Release is debuggable'
+          activity = next(node for node in root.find('application').findall('activity') if node.get(ns + 'name', '').endswith('MainActivity'))
+          assert activity.get(ns + 'enableOnBackInvokedCallback') == 'true', 'Predictive Back support missing'
           permissions = {p.get(ns + 'name') for p in root.findall('uses-permission')}
           assert not permissions.intersection({'android.permission.RECORD_AUDIO', 'android.permission.MODIFY_AUDIO_SETTINGS'}), 'Microphone permissions must remain absent while recording is deferred'
           assert not any(node.get(ns + 'name') == 'android.hardware.microphone' for node in root.findall('uses-feature')), 'Deferred recording must not filter devices by microphone'
@@ -1516,6 +1538,7 @@ jobs:
           with ZipFile('android/app/build/outputs/bundle/release/app-release.aab') as archive:
               assert any(name.endswith('/raw/qs_capture_appear.mp3') for name in archive.namelist()), 'Missing floater appearance sound'
               dex = [archive.read(n) for n in archive.namelist() if n.startswith('base/dex/') and n.endswith('.dex')]
+              assert any(b'quickSpendSystemBack' in data for data in dex), 'Native Back-to-JavaScript handler missing'
               for cls in (b'Lcom/quickspend/app/SmsBridgePlugin;', b'Lcom/quickspend/app/SmsReceiver;', b'Lcom/quickspend/app/FloatingCaptureService;', b'Lcom/quickspend/app/SmsStore;', b'Lcom/quickspend/app/PaymentParser;', b'Lcom/quickspend/app/CaptureCatalog;', b'Lcom/quickspend/app/QuickAccessConfig;', b'Lcom/quickspend/app/QuickAccessPolicy;', b'Lcom/quickspend/app/QuickAccessOverlay;', b'Lcom/quickspend/app/CaptureSound;', b'Lcom/quickspend/app/CaptureSoundPolicy;', b'Lcom/quickspend/app/CaptureRecovery;', b'Lcom/quickspend/app/CaptureRecoveryJob;', b'Lcom/quickspend/app/CaptureWakePolicy;', b'Lcom/quickspend/app/CaptureMotion;', b'Lcom/quickspend/app/QsLanguage;', b'Lcom/quickspend/app/AccountBridgePlugin;', b'Lcom/quickspend/app/UpdateBridgePlugin;', b'Lcom/quickspend/app/UpdateMessagingService;'):
                   assert any(cls in data for data in dex), 'Bundle missing native class: ' + cls.decode()
               for method in ('quickAccessSettings', 'setQuickAccessSettings', 'overlayStatus', 'openOverlaySettings', 'setOverlayEnabled', 'testOverlay', 'setLanguage'):
@@ -1534,7 +1557,7 @@ jobs:
           meta = json.loads(Path('release-metadata.json').read_text())
           assert int(root.get(ns + 'versionCode')) == meta['versionCode'], 'Version code mismatch'
           meta['verification'] = 'passed'
-          meta['releaseChecks'] = {'pr13EmiHeading': 'passed', 'pr14PictureNotes': 'passed', 'voiceRecordingDeferred': 'passed'}
+          meta['releaseChecks'] = {'pr12NativeBack': 'passed', 'pr13EmiHeading': 'passed', 'pr14PictureNotes': 'passed', 'voiceRecordingDeferred': 'passed'}
           Path('dist/build-evidence.json').write_text(json.dumps(meta, indent=2))
           print('VERIFIED: signed release AAB, API 36, SMS bridge, native floating capture, receiver, permissions and version code.')
           PY_VERIFY

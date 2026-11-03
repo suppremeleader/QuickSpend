@@ -19,6 +19,7 @@ class ManifestConfigTest(unittest.TestCase):
                 root = ET.parse(p).getroot()
                 ns = '{http://schemas.android.com/apk/res/android}'
                 job = next(x for x in root.find('application').findall('service') if x.get(ns+'name') == '.CaptureRecoveryJob')
+                assert root.find('application').find('activity').get(ns+'enableOnBackInvokedCallback') == 'true'
                 permissions = {x.get(ns+'name') for x in root.findall('uses-permission')}
                 assert not any(x.get(ns+'name') == 'android.hardware.microphone' for x in root.findall('uses-feature'))
                 assert 'android.permission.RECORD_AUDIO' not in permissions
