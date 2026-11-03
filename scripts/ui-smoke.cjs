@@ -1,7 +1,7 @@
 /* Real Chromium smoke check. Isolated CI dependency; no production packages. */
 const {chromium}=require(process.env.PLAYWRIGHT_MODULE||'playwright'),assert=require('assert'),path=require('path'),fs=require('fs');
 (async()=>{
- const browser=await chromium.launch({headless:true});try{
+ const browser=await chromium.launch({headless:true,args:['--use-fake-ui-for-media-stream','--use-fake-device-for-media-stream']});try{
  const page=await browser.newPage({viewport:{width:390,height:844},deviceScaleFactor:1});const errors=[];page.on('pageerror',e=>errors.push(e.message));
  await page.addInitScript(()=>{
   for(const key of ['qs_ob','qs_p2','qs_account_setup'])localStorage.setItem(key,'1');localStorage.setItem('qs_language','en');
@@ -23,8 +23,20 @@ const {chromium}=require(process.env.PLAYWRIGHT_MODULE||'playwright'),assert=req
  await page.evaluate(()=>history.back());await page.locator('#s-home.on').waitFor();
  await page.locator('[data-t="insights"]').click();await page.evaluate(()=>history.back());await page.locator('#s-home.on').waitFor();
  await page.locator('.profile-settings').first().click();await page.locator('#sheet.on').waitFor();await page.evaluate(()=>history.back());await page.waitForFunction(()=>!document.querySelector('#sheet').classList.contains('on'));
+ await page.evaluate(()=>openSheet({manual:true,m:'Receipt test',a:25}));
+ await page.locator('#note-picture').setInputFiles({name:'receipt.png',mimeType:'image/png',buffer:fs.readFileSync('assets/quickspend-icon.png')});
+ await page.waitForFunction(()=>!!cur.photo&&!noteBusy);
+ await page.getByRole('button',{name:'🎙️ Voice note',exact:true}).click();await page.waitForFunction(()=>!!noteRecorder);await page.waitForTimeout(900);
+ await page.getByRole('button',{name:'■ Stop recording',exact:true}).click();await page.waitForFunction(()=>!!cur.voice&&!noteRecorder&&!noteBusy);
+ assert.equal(await page.locator('#sheet audio').count(),1);assert.equal(await page.locator('#sheet .note-attachment img').count(),1);await page.screenshot({animations:'disabled',path:'ui-smoke-output/note-attachments.png'});
+ await page.locator('#sheet .save').click();await page.waitForFunction(()=>!document.querySelector('#sheet').classList.contains('on'));
+ assert.equal(await page.evaluate(()=>{const row=tx.find(x=>x.m==='Receipt test');return !!row?.photo&&!!row?.voice}),true);
+ await page.evaluate(()=>openTransactionEdit(tx.find(x=>x.m==='Receipt test').id));await page.getByRole('button',{name:'Remove voice note',exact:true}).click();await page.getByRole('button',{name:'Remove picture',exact:true}).click();await page.locator('#sheet .save').click();await page.waitForFunction(()=>!document.querySelector('#sheet').classList.contains('on'));
+ assert.equal(await page.evaluate(()=>{const row=tx.find(x=>x.m==='Receipt test');return row.photo===null&&row.voice===null}),true);
+ await page.evaluate(()=>openSheet({manual:true,m:'Cancel recording',a:10}));await page.getByRole('button',{name:'🎙️ Voice note',exact:true}).click();await page.waitForFunction(()=>!!noteRecorder);
+ await page.evaluate(()=>{window.testNoteStream=noteStream;closeSheet()});assert.equal(await page.evaluate(()=>window.testNoteStream.getTracks().every(track=>track.readyState==='ended')),true,'Closing entry releases real microphone tracks');
  await page.evaluate(()=>{ob=0;showOb()});assert.equal(await page.locator('#onb img').count(),0);await page.screenshot({animations:'disabled',path:'ui-smoke-output/setup.png'});
  const overflow=await page.locator('#onb').evaluate(el=>el.scrollWidth>el.clientWidth+1);assert.equal(overflow,false,'Setup must fit phone width');assert.deepEqual(errors,[]);
- console.log('PASS: Chromium history search/filter/edit routes, navigation scroll reset, text-only setup, Insights cleanup, dark/light screenshots and no runtime errors');
+ console.log('PASS: Chromium history search/filter/edit routes, navigation scroll reset, text-only setup, Insights cleanup, dark/light screenshots real photo compression/voice recording/save/removal/cleanup and no runtime errors');
  }finally{await browser.close()}
 })().catch(e=>{console.error(e);process.exit(1)});
