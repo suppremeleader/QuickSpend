@@ -1547,6 +1547,7 @@ jobs:
               assert 'base/assets/public/locales/hi.json' in archive.namelist(), 'Hindi translations missing'
               assert 'base/assets/public/assets/quickspend-icon.png' in archive.namelist(), 'Web icon asset missing'
               html = archive.read('base/assets/public/index.html').decode()
+              assert html == Path('index.html').read_text(), 'Packaged app does not match the reviewed source'
               assert 'nativePromise' in html and 'floating-capture-11' in html, 'Outdated floating-capture HTML bridge'
               assert 'id="note-picture"' in html and 'function addNotePicture(' in html, 'PR 14 picture-note controls missing from packaged app'
               assert 'emi-entry-plans' in html and 'function selectEmiPlan(' in html, 'PR 13 existing EMI selection missing from packaged app'
@@ -1557,7 +1558,7 @@ jobs:
           meta = json.loads(Path('release-metadata.json').read_text())
           assert int(root.get(ns + 'versionCode')) == meta['versionCode'], 'Version code mismatch'
           meta['verification'] = 'passed'
-          meta['releaseChecks'] = {'pr12NativeBack': 'passed', 'pr13EmiHeading': 'passed', 'pr14PictureNotes': 'passed', 'voiceRecordingDeferred': 'passed'}
+          meta['releaseChecks'] = {'pr16ExpenseEmiEditor': 'passed', 'pr12NativeBack': 'passed', 'pr13EmiHeading': 'passed', 'pr14PictureNotes': 'passed', 'voiceRecordingDeferred': 'passed'}
           Path('dist/build-evidence.json').write_text(json.dumps(meta, indent=2))
           print('VERIFIED: signed release AAB, API 36, SMS bridge, native floating capture, receiver, permissions and version code.')
           PY_VERIFY

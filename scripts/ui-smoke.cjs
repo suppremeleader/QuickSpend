@@ -34,8 +34,13 @@ const {chromium}=require(process.env.PLAYWRIGHT_MODULE||'playwright'),assert=req
  assert.equal(await page.locator('#sheet .note-attachment img').count(),1);await page.screenshot({animations:'disabled',path:'ui-smoke-output/note-picture.png'});await page.locator('#sheet .emi-entry-plans').scrollIntoViewIfNeeded();await page.screenshot({animations:'disabled',path:'ui-smoke-output/entry-emi.png'});
  await page.locator('#sheet .save').click();await page.waitForFunction(()=>!document.querySelector('#sheet').classList.contains('on'));
  assert.equal(await page.evaluate(()=>!!tx.find(x=>x.m==='Receipt test')?.photo),true);
- await page.evaluate(()=>openTransactionEdit(tx.find(x=>x.m==='Receipt test').id));await page.getByRole('button',{name:'Remove picture',exact:true}).click();await page.locator('#sheet .save').click();await page.waitForFunction(()=>!document.querySelector('#sheet').classList.contains('on'));
- assert.equal(await page.evaluate(()=>tx.find(x=>x.m==='Receipt test').photo===null),true);
+ await page.evaluate(()=>openTransactionEdit(tx.find(x=>x.m==='Receipt test').id));
+ assert.equal(await page.getByRole('button',{name:'+ Add new EMI',exact:true}).count(),1,'PR16 EMI actions are visible in an existing expense editor');
+ await page.locator('#sheet .emi-entry-plans').getByRole('button',{name:/Car EMI test/}).click();await page.locator('#sheet .save').click();await page.waitForFunction(()=>!document.querySelector('#sheet').classList.contains('on'));
+ assert.equal(await page.evaluate(()=>{const row=tx.find(x=>x.m==='Receipt test');return row.a===25&&row.acc==='Main account'&&row.emiPlanName==='Car EMI test'&&!!row.photo}),true,'Edited payment keeps amount/merchant/picture and saves the plan link');
+ await page.evaluate(()=>openTransactionEdit(tx.find(x=>x.m==='Receipt test').id));await page.locator('#sheet .emi-entry-plans').getByRole('button',{name:/Car EMI test/}).click();
+ await page.getByRole('button',{name:'Remove picture',exact:true}).click();await page.locator('#sheet .save').click();await page.waitForFunction(()=>!document.querySelector('#sheet').classList.contains('on'));
+ assert.equal(await page.evaluate(()=>tx.find(x=>x.m==='Receipt test').photo===null&&tx.find(x=>x.m==='Receipt test').emiPlanIndex===null),true);
  await page.evaluate(()=>{ob=0;showOb()});assert.equal(await page.locator('#onb img').count(),0);await page.screenshot({animations:'disabled',path:'ui-smoke-output/setup.png'});
  const overflow=await page.locator('#onb').evaluate(el=>el.scrollWidth>el.clientWidth+1);assert.equal(overflow,false,'Setup must fit phone width');assert.deepEqual(errors,[]);
  console.log('PASS: Chromium history search/filter/edit routes, navigation scroll reset, text-only setup, Insights cleanup, dark/light screenshots real photo compression/save/removal and recording-control absence and no runtime errors');
