@@ -23,7 +23,7 @@ const {chromium}=require(process.env.PLAYWRIGHT_MODULE||'playwright'),assert=req
  await page.evaluate(()=>window.quickSpendSystemBack());await page.locator('#s-home.on').waitFor();
  await page.locator('[data-t="insights"]').click();await page.evaluate(()=>window.quickSpendSystemBack());await page.locator('#s-home.on').waitFor();
  await page.locator('.profile-settings').first().click();await page.locator('#sheet.on').waitFor();await page.evaluate(()=>window.quickSpendSystemBack());await page.waitForFunction(()=>!document.querySelector('#sheet').classList.contains('on'));
- await page.evaluate(()=>{const now=new Date(),month=now.getFullYear()*12+now.getMonth();recur=[{t:'Expense',m:'Car EMI test',a:100,total:1200,months:12,left:12,startMonth:month,last:month,day:1,emi:true,acc:'Main account'}];openSheet({manual:true,m:'Receipt test',a:25})});
+ await page.evaluate(()=>{const now=new Date(),month=now.getFullYear()*12+now.getMonth();recur=[{t:'Expense',m:'Car EMI test',a:100,total:1200,months:12,left:12,startMonth:month,last:month,day:1,dated:true,startDate:monthDate(month,1),endDate:monthDate(month+11,1),emi:true,acc:'Main account'}];openSheet({manual:true,m:'Receipt test',a:25})});
  assert.equal(await page.getByRole('button',{name:'+ Add new EMI',exact:true}).count(),1);
  assert.equal(await page.locator('#sheet .hd > span').filter({hasText:'🔁 EMI'}).count(),1,'PR 13 has exactly one EMI heading');
  assert.equal(await page.getByText('Existing EMI',{exact:true}).count(),0);assert.equal(await page.locator('#sheet .emi-entry-plans').getByRole('button',{name:/Car EMI test/}).count(),1);
@@ -38,9 +38,11 @@ const {chromium}=require(process.env.PLAYWRIGHT_MODULE||'playwright'),assert=req
  assert.equal(await page.getByRole('button',{name:'+ Add new EMI',exact:true}).count(),1,'PR16 EMI actions are visible in an existing expense editor');
  await page.locator('#sheet .emi-entry-plans').getByRole('button',{name:/Car EMI test/}).click();await page.locator('#sheet .save').click();await page.waitForFunction(()=>!document.querySelector('#sheet').classList.contains('on'));
  assert.equal(await page.evaluate(()=>{const row=tx.find(x=>x.m==='Receipt test');return row.a===25&&row.acc==='Main account'&&row.emiPlanName==='Car EMI test'&&!!row.photo}),true,'Edited payment keeps amount/merchant/picture and saves the plan link');
+ assert.equal(await page.evaluate(()=>emiOutstanding(recur[0])),1100,'Linked current instalment reduces outstanding once');assert.equal(await page.evaluate(()=>emiMonthPaid(recur[0],new Date().getFullYear()*12+new Date().getMonth())),true);
  await page.evaluate(()=>openTransactionEdit(tx.find(x=>x.m==='Receipt test').id));await page.locator('#sheet .emi-entry-plans').getByRole('button',{name:/Car EMI test/}).click();
  await page.getByRole('button',{name:'Remove picture',exact:true}).click();await page.locator('#sheet .save').click();await page.waitForFunction(()=>!document.querySelector('#sheet').classList.contains('on'));
  assert.equal(await page.evaluate(()=>tx.find(x=>x.m==='Receipt test').photo===null&&tx.find(x=>x.m==='Receipt test').emiPlanIndex===null),true);
+ assert.equal(await page.evaluate(()=>emiOutstanding(recur[0])),1200,'Unlinking restores the instalment balance');
  await page.evaluate(()=>{ob=0;showOb()});assert.equal(await page.locator('#onb img').count(),0);await page.screenshot({animations:'disabled',path:'ui-smoke-output/setup.png'});
  const overflow=await page.locator('#onb').evaluate(el=>el.scrollWidth>el.clientWidth+1);assert.equal(overflow,false,'Setup must fit phone width');assert.deepEqual(errors,[]);
  console.log('PASS: Chromium history search/filter/edit routes, navigation scroll reset, text-only setup, Insights cleanup, dark/light screenshots real photo compression/save/removal and recording-control absence and no runtime errors');
