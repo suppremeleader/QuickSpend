@@ -58,8 +58,10 @@ jobs:
           node tests/transaction-history.cjs
           node tests/back-navigation.cjs
           node tests/note-attachments.cjs
+          node tests/planning.cjs
           python3 -m unittest discover -s tests -p "test_release_watch.py"
           python3 -m unittest discover -s tests -p "test_manifest_config.py"
+          python3 -m unittest discover -s tests -p "test_planning_native.py"
       - name: Check phone layouts in Chromium
         run: |
           npm install --prefix /tmp/qs-ui --no-save --ignore-scripts playwright@1.56.1
@@ -84,6 +86,8 @@ jobs:
           java -cp /tmp/qs-motion CaptureMotionTest
           javac -d /tmp/qs-motion native/UpdatePolicy.java tests/UpdatePolicyTest.java
           java -cp /tmp/qs-motion UpdatePolicyTest
+          javac -d /tmp/qs-motion native/SubscriptionDates.java tests/SubscriptionDatesTest.java
+          java -cp /tmp/qs-motion com.quickspend.app.SubscriptionDatesTest
           javac -d /tmp/qs-motion native/QuickAccessPolicy.java tests/QuickAccessPolicyTest.java
           java -cp /tmp/qs-motion QuickAccessPolicyTest
           javac -d /tmp/qs-motion native/CaptureWakePolicy.java tests/CaptureWakePolicyTest.java
@@ -457,6 +461,7 @@ jobs:
               registerPlugin(SmsBridgePlugin.class);
               registerPlugin(AccountBridgePlugin.class);
               registerPlugin(UpdateBridgePlugin.class);
+              registerPlugin(PlanningBridge.class);
               super.onCreate(savedInstanceState);
               QsLanguage.applySystemBars(this);
               if (android.os.Build.VERSION.SDK_INT >= 26) {
@@ -473,6 +478,7 @@ jobs:
             @Override
             protected void onNewIntent(Intent intent) {
               super.onNewIntent(intent);
+              setIntent(intent);
               grab(intent);
             }
 
@@ -624,6 +630,7 @@ jobs:
                           persist(p.edit().putString("queue", q.toString()));
                       } catch (JSONException e) { throw new IllegalStateException("Could not queue payment", e); }
                   }
+                  QsWidgets.updateAll(c);
                   FloatingCaptureService.refresh(c, true);
               }
               public static JSONObject snapshot(Context c) {
@@ -661,6 +668,7 @@ jobs:
                       } catch (JSONException e) { throw new IllegalStateException("Could not save payment", e); }
                   }
                   if(entry!=null) CaptureCatalog.record(c,entry);
+                  QsWidgets.updateAll(c);
                   FloatingCaptureService.refresh(c, false);
                   return true;
               }
@@ -669,6 +677,7 @@ jobs:
                       persist(prefs(c).edit().remove("queue").remove(SAVED).remove(HANDLED));
                       CaptureCatalog.clear(c);
                   }
+                  QsWidgets.updateAll(c);
                   FloatingCaptureService.refresh(c, false);
               }
               public static void acknowledge(Context c, JSONArray keys) {
@@ -1223,6 +1232,20 @@ jobs:
                   LinearLayout categoryForm=row(); EditText categoryName=new EditText(this); categoryName.setTextColor(FG); categoryName.setHintTextColor(MUTED); categoryName.setHint(tr("New category")); categoryName.setContentDescription(tr("New category")); categoryName.setSingleLine(true); categoryName.setFilters(new android.text.InputFilter[]{new android.text.InputFilter.LengthFilter(40)}); categoryForm.addView(categoryName,new LinearLayout.LayoutParams(0,-2,1)); Button createCategory=button("Add",true); categoryForm.addView(createCategory,new LinearLayout.LayoutParams(-2,dp(44))); append(root,categoryForm,6); categoryForm.setVisibility(View.GONE);
                   addCategory.setOnClickListener(view->{categoryForm.setVisibility(categoryForm.getVisibility()==View.VISIBLE?View.GONE:View.VISIBLE);if(categoryForm.getVisibility()==View.VISIBLE){categoryName.requestFocus();categoryName.post(()->((InputMethodManager)getSystemService(INPUT_METHOD_SERVICE)).showSoftInput(categoryName,InputMethodManager.SHOW_IMPLICIT));}});
                   createCategory.setOnClickListener(view->{String name=categoryName.getText().toString().trim();try{if(!CaptureCatalog.add(this,type[0],name)){categoryName.setError(tr("Choose a unique category name (up to 40 characters)."));return;}java.util.List<String> labels=panelCategories.get(type[0]);if(labels==null){labels=CaptureCatalog.labels(this,type[0]);panelCategories.put(type[0],labels);}else labels.add(name);category[0]=name;categoryName.setText("");categoryForm.setVisibility(View.GONE);((InputMethodManager)getSystemService(INPUT_METHOD_SERVICE)).hideSoftInputFromWindow(categoryName.getWindowToken(),0);drawCategories.run();}catch(RuntimeException e){categoryName.setError(tr("Could not save. Try again."));}});
+                  final String[] subscriptionId={""}, linkedEmiName={""}; final int[] linkedEmiIndex={-1};
+                  LinearLayout planningPickers=new LinearLayout(this);planningPickers.setOrientation(LinearLayout.VERTICAL);append(root,planningPickers,10);
+                  android.widget.Spinner emiPicker=new android.widget.Spinner(this),subPicker=new android.widget.Spinner(this);final Button[] planningToggles=new Button[2];
+                  java.util.List<String> emiLabels=new java.util.ArrayList<>(),subLabels=new java.util.ArrayList<>();java.util.List<JSONObject> emiChoices=new java.util.ArrayList<>(),subChoices=new java.util.ArrayList<>();
+                  emiLabels.add(tr("None"));subLabels.add(tr("None"));
+                  org.json.JSONArray nativeEmi=PlanningBridge.choices(this,"emiPlans"),nativeSubs=PlanningBridge.choices(this,"subscriptions");
+                  for(int j=0;j<nativeEmi.length();j++){JSONObject r=nativeEmi.optJSONObject(j);if(r!=null){emiChoices.add(r);emiLabels.add(r.optString("name"));}}
+                  for(int j=0;j<nativeSubs.length();j++){JSONObject r=nativeSubs.optJSONObject(j);if(r!=null&&"active".equals(r.optString("status"))){subChoices.add(r);subLabels.add(r.optString("name"));}}
+                  android.widget.ArrayAdapter<String> emiAdapter=new android.widget.ArrayAdapter<String>(this,android.R.layout.simple_spinner_dropdown_item,emiLabels),subAdapter=new android.widget.ArrayAdapter<String>(this,android.R.layout.simple_spinner_dropdown_item,subLabels);emiPicker.setAdapter(emiAdapter);subPicker.setAdapter(subAdapter);
+                  for(int pick=0;pick<2;pick++){boolean emi=pick==0;android.widget.Spinner spinner=emi?emiPicker:subPicker;Button toggle=button(tr(emi?"EMI":"Subscriptions")+"  ⌄",false);planningToggles[pick]=toggle;append(planningPickers,toggle,6);append(planningPickers,spinner,2);spinner.setVisibility(View.GONE);spinner.setContentDescription(tr(emi?"EMI":"Subscriptions"));toggle.setOnClickListener(v->spinner.setVisibility(spinner.getVisibility()==View.VISIBLE?View.GONE:View.VISIBLE));}
+                  subPicker.setOnItemSelectedListener(new android.widget.AdapterView.OnItemSelectedListener(){public void onNothingSelected(android.widget.AdapterView<?> p){}public void onItemSelected(android.widget.AdapterView<?> p,View v,int pos,long id){subscriptionId[0]=pos>0?subChoices.get(pos-1).optString("id"):"";planningToggles[1].setText(tr("Subscriptions")+(pos>0?" · "+subChoices.get(pos-1).optString("name"):"")+"  ⌄");if(pos>0){emiPicker.setSelection(0);linkedEmiIndex[0]=-1;linkedEmiName[0]="";}}});
+                  emiPicker.setOnItemSelectedListener(new android.widget.AdapterView.OnItemSelectedListener(){public void onNothingSelected(android.widget.AdapterView<?> p){}public void onItemSelected(android.widget.AdapterView<?> p,View v,int pos,long id){linkedEmiIndex[0]=pos>0?emiChoices.get(pos-1).optInt("index",-1):-1;linkedEmiName[0]=pos>0?emiChoices.get(pos-1).optString("name"):"";planningToggles[0].setText(tr("EMI")+(pos>0?" · "+linkedEmiName[0]:"")+"  ⌄");if(pos>0){subPicker.setSelection(0);subscriptionId[0]="";}}});
+                  for(int j=0;j<types.getChildCount();j++){View v=types.getChildAt(j);v.setOnClickListener(ignored->{type[0]=String.valueOf(v.getTag());category[0]="Uncategorised";for(int k=0;k<types.getChildCount();k++){Button other=(Button)types.getChildAt(k);boolean selected=type[0].equals(other.getTag());other.setTextColor(selected?selectedForeground():FG);other.setBackground(chipBackground(selected));}boolean debt="Lent".equals(type[0])||"Borrowed".equals(type[0]);person.setVisibility(debt?View.VISIBLE:View.GONE);person.setHint(tr("Lent".equals(type[0])?"Who did you lend to?":"Who did you borrow from?"));planningPickers.setVisibility("Expense".equals(type[0])?View.VISIBLE:View.GONE);emiPicker.setSelection(0);subPicker.setSelection(0);linkedEmiIndex[0]=-1;subscriptionId[0]="";linkedEmiName[0]="";drawCategories.run();});}
+                  planningPickers.setVisibility("Expense".equals(type[0])?View.VISIBLE:View.GONE);
                   LinearLayout footer = new LinearLayout(this); footer.setOrientation(LinearLayout.VERTICAL); footer.setPadding(dp(20),dp(8),dp(20),dp(20)); footer.setBackground(shape(BG,0)); frame.addView(footer,new LinearLayout.LayoutParams(-1,-2));
                   TextView error = text(tr(""), 12, lightMode?Color.rgb(181,45,68):Color.rgb(255,128,128)); error.setVisibility(View.GONE); append(footer, error, 0);
                   LinearLayout actions = row(); Button later = button("Later", false), save = button(item.optBoolean("demo") ? "Finish test" : "Save payment  ✓", true);
@@ -1264,6 +1287,7 @@ jobs:
                       save.setEnabled(false);
                       try {
                           JSONObject entry = new JSONObject().put("t", type[0]).put("a", value).put("note",comment.getText().toString().trim()).put("c", category[0]).put("m", details.merchant).put("who", who).put("ts", item.optLong("ts", System.currentTimeMillis())).put("settled", 0).put("smsFrom", item.optString("from")).put("smsBody", item.optString("body"));
+                          if("Expense".equals(type[0])){if(!subscriptionId[0].isEmpty())entry.put("subscriptionId",subscriptionId[0]);if(linkedEmiIndex[0]>=0)entry.put("emiPlanIndex",linkedEmiIndex[0]).put("emiPlanName",linkedEmiName[0]);}
                           boolean saved = SmsStore.complete(this, SmsStore.key(item), entry);
                           hidePanel(); updateOverlay();
                           Toast.makeText(this, tr(saved ? "Saved to QuickSpend" : "This payment was already handled"), Toast.LENGTH_SHORT).show();
@@ -1349,6 +1373,9 @@ jobs:
           ET.indent(root)
           p.write_text(ET.tostring(root, encoding='unicode'))
           PY
+          cp native/*.java "$D/"
+          cp -R native/res/. android/app/src/main/res/
+          python3 scripts/configure_planning.py
           python3 - <<'PY_ICON'
           from pathlib import Path
           import shutil
@@ -1517,6 +1544,11 @@ jobs:
           assert root.find('application').get(ns + 'debuggable', 'false') == 'false', 'Release is debuggable'
           activity = next(node for node in root.find('application').findall('activity') if node.get(ns + 'name', '').endswith('MainActivity'))
           assert activity.get(ns + 'enableOnBackInvokedCallback') == 'true', 'Predictive Back support missing'
+          receivers = root.find('application').findall('receiver')
+          assert len([r for r in receivers if 'QsWidgets$' in r.get(ns + 'name', '')]) == 3, 'Three widgets must be packaged'
+          assert any(r.get(ns + 'name', '').endswith('QsReminderReceiver') and r.get(ns + 'exported') == 'false' for r in receivers), 'Private reminder receiver missing'
+          assert any(p.get(ns + 'name') == 'android.permission.RECEIVE_BOOT_COMPLETED' for p in root.findall('uses-permission')), 'Reminder reboot recovery missing'
+
           permissions = {p.get(ns + 'name') for p in root.findall('uses-permission')}
           assert not permissions.intersection({'android.permission.RECORD_AUDIO', 'android.permission.MODIFY_AUDIO_SETTINGS'}), 'Microphone permissions must remain absent while recording is deferred'
           assert not any(node.get(ns + 'name') == 'android.hardware.microphone' for node in root.findall('uses-feature')), 'Deferred recording must not filter devices by microphone'
@@ -1548,6 +1580,8 @@ jobs:
               assert 'base/assets/public/assets/quickspend-icon.png' in archive.namelist(), 'Web icon asset missing'
               html = archive.read('base/assets/public/index.html').decode()
               assert html == Path('index.html').read_text(), 'Packaged app does not match the reviewed source'
+              assert 'function subscriptionsPage(' in html and 'function savingsPage(' in html, 'Planning screens missing'
+              assert any('qs_widget' in n for n in archive.namelist()), 'Widget resources missing'
               assert 'nativePromise' in html and 'floating-capture-11' in html, 'Outdated floating-capture HTML bridge'
               assert 'id="note-picture"' in html and 'function addNotePicture(' in html, 'PR 14 picture-note controls missing from packaged app'
               assert 'emi-entry-plans' in html and 'function selectEmiPlan(' in html, 'PR 13 existing EMI selection missing from packaged app'
@@ -1558,7 +1592,7 @@ jobs:
           meta = json.loads(Path('release-metadata.json').read_text())
           assert int(root.get(ns + 'versionCode')) == meta['versionCode'], 'Version code mismatch'
           meta['verification'] = 'passed'
-          meta['releaseChecks'] = {'qui30VectorIconsAndEmiDisclosure': 'passed', 'pr17LinkedEmiCompletion': 'passed', 'pr16ExpenseEmiEditor': 'passed', 'pr12NativeBack': 'passed', 'pr13EmiHeading': 'passed', 'pr14PictureNotes': 'passed', 'voiceRecordingDeferred': 'passed'}
+          meta['releaseChecks'] = {'planningSavingsWidgets': 'passed', 'qui30VectorIconsAndEmiDisclosure': 'passed', 'pr17LinkedEmiCompletion': 'passed', 'pr16ExpenseEmiEditor': 'passed', 'pr12NativeBack': 'passed', 'pr13EmiHeading': 'passed', 'pr14PictureNotes': 'passed', 'voiceRecordingDeferred': 'passed'}
           Path('dist/build-evidence.json').write_text(json.dumps(meta, indent=2))
           print('VERIFIED: signed release AAB, API 36, SMS bridge, native floating capture, receiver, permissions and version code.')
           PY_VERIFY
