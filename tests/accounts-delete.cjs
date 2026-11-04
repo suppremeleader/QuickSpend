@@ -43,7 +43,7 @@ const assert=require('assert');const{app,settle}=require('./app-inbox.cjs');
  const saved=a.eval("localStorage.getItem('qs1')");const b=app({savedLanguage:'en',savedState:saved});await settle();assert.equal(b.eval('tx.length'),0);assert.equal(b.eval('pending.length'),0,'Deletion survives reload and inbox recovery');
  b.inbox.items.push({sourceKey:'different-payment',from:'HDFC',body:'Rs.25 debited at Cafe',amount:25,ts:Date.now()});await b.c.pull(true);assert.equal(b.eval('pending.length'),1,'New legitimate payments still import');
  const c=app({savedLanguage:'en'});await settle();
- c.eval("tx=[{id:1,t:'Income',a:1000,m:'Pay',c:'Salary',ts:Date.now()},{id:2,t:'Expense',a:200,m:'Cafe',c:'Food',acc:'Cash',ts:Date.now()}];pending=[{id:3,m:'Pending',a:50}];recur=[{t:'Expense',m:'Rent',a:100,day:5,left:-1}];accts=[{n:'Main account',i:'🏦'},{n:'Cash',i:'👛'}];view='Main account';render()");
+ c.eval("tx=[{id:1,t:'Income',a:1000,m:'Pay',c:'Salary',ts:Date.now()},{id:2,t:'Expense',a:200,m:'Cafe',c:'Food',acc:'Cash',ts:Date.now()}];pending=[{id:3,m:'Pending',a:50}];recur=[{t:'Expense',m:'Rent',a:100,day:5,left:-1,last:new Date().getFullYear()*12+new Date().getMonth()}];accts=[{n:'Main account',i:'🏦'},{n:'Cash',i:'👛'}];view='Main account';render()");
  c.c.openAccountPicker();let picker=c.nodes.get('#sheet').innerHTML;
  assert.equal((picker.match(/class="account-row-edit"/g)||[]).length,2,'Every real account has its own edit action');
  assert.doesNotMatch(picker,/renAcc|Type a new name/,'Picker has no bottom name-editing section');

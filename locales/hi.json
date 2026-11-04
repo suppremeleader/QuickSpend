@@ -547,5 +547,7 @@
   "Could not read that picture.": "तस्वीर पढ़ी नहीं जा सकी।",
   "Finish the attachment before saving.": "सेव करने से पहले फ़ाइल तैयार होने दें।",
   "Cloud backup is full. Your records and attachments are saved on this phone. Export a file backup.": "क्लाउड बैकअप भर गया है। आपके लेन-देन और फ़ाइलें इस फ़ोन पर सेव हैं। फ़ाइल बैकअप निकालें।",
-  "Add new EMI": "नई EMI जोड़ें"
+  "Add new EMI": "नई EMI जोड़ें",
+  "Speed dial": "जल्दी चुनें",
+  "Remembered from last time": "पिछली बार से याद रखा"
 }

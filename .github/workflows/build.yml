@@ -1558,7 +1558,7 @@ jobs:
           meta = json.loads(Path('release-metadata.json').read_text())
           assert int(root.get(ns + 'versionCode')) == meta['versionCode'], 'Version code mismatch'
           meta['verification'] = 'passed'
-          meta['releaseChecks'] = {'pr17LinkedEmiCompletion': 'passed', 'pr16ExpenseEmiEditor': 'passed', 'pr12NativeBack': 'passed', 'pr13EmiHeading': 'passed', 'pr14PictureNotes': 'passed', 'voiceRecordingDeferred': 'passed'}
+          meta['releaseChecks'] = {'qui30VectorIconsAndEmiDisclosure': 'passed', 'pr17LinkedEmiCompletion': 'passed', 'pr16ExpenseEmiEditor': 'passed', 'pr12NativeBack': 'passed', 'pr13EmiHeading': 'passed', 'pr14PictureNotes': 'passed', 'voiceRecordingDeferred': 'passed'}
           Path('dist/build-evidence.json').write_text(json.dumps(meta, indent=2))
           print('VERIFIED: signed release AAB, API 36, SMS bridge, native floating capture, receiver, permissions and version code.')
           PY_VERIFY
