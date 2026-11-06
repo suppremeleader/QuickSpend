@@ -1,7 +1,7 @@
 name: Quick Spend Play Console Bundle
 on:
   push:
-    branches: [main, codex/linear-mention-qui-29-bug-dbcps4]
+    branches: [main]
   workflow_dispatch:
     inputs:
       version_code:
