@@ -1,7 +1,13 @@
-const assert=require('assert'),{app,settle}=require('./app-inbox.cjs');
+const fs=require('fs'),path=require('path'),assert=require('assert'),{app,settle}=require('./app-inbox.cjs');
 (async()=>{
  const a=app({savedLanguage:'en'});await settle();
+ const workflow=fs.readFileSync(path.join(__dirname,'../.github/workflows/build.yml'),'utf8');
+ assert.match(workflow,/deferredPayments\.add\(SmsStore\.key\(item\)\); hidePanel\(\); updateOverlay\(\)/,'Later advances the floater to the next waiting payment');
+ assert.match(workflow,/!deferredPayments\.contains\(SmsStore\.key\(item\)\)/,'Deferred floater payments remain in Review without hiding the rest');
  a.eval("tx=[];pending=[];recur=[];view='All';openSheet({manual:true,m:'Manual entry',a:125});cur.note='Lunch with family';adding='cat';$('#nb').value='Eating out';commit()");
+ assert.match(a.nodes.get('#sheet').innerHTML,/onclick="closeSheet\(\)">Discard<\/button>/,'Manual New entry has a red discard action');
+ assert.match(a.nodes.get('#sheet').innerHTML,/Subscriptions/,'New expense keeps the subscription section beside EMI');
+ assert.match(a.nodes.get('#sheet').innerHTML,/delete-entry/,'Discard uses the destructive action styling');
  assert.equal(a.eval('cur.cat'),'Eating out');assert.equal(a.eval('BUDGET_CATS.includes("Eating out")'),true);
  assert.match(a.nodes.get('#sheet').innerHTML,/placeholder="Optional"/);
  a.c.save();assert.equal(a.eval('tx[0].note'),'Lunch with family');assert.equal(a.eval('tx[0].c'),'Eating out');assert.equal(a.eval('budgetSummary(budgetMonth).spent["Eating out"]'),125);

@@ -767,7 +767,9 @@ jobs:
           import org.json.JSONArray;
           import org.json.JSONObject;
           import java.util.ArrayList;
+          import java.util.HashSet;
           import java.util.List;
+          import java.util.Set;
 
           /** User-enabled native overlay with guarded recovery for a newly received payment. */
           public class FloatingCaptureService extends Service {
@@ -794,6 +796,7 @@ jobs:
               private boolean foregroundStarted;
               private String foregroundLanguage="";
               private String panelKey;
+              private final Set<String> deferredPayments = new HashSet<>();
               private BroadcastReceiver screenReceiver;
               private int BG = Color.rgb(21, 21, 27), FG = Color.rgb(244, 244, 246), MUTED = Color.rgb(154, 154, 169), ACCENT = Color.rgb(201, 243, 107);
               private boolean lightMode, paletteLoaded;
@@ -946,7 +949,7 @@ jobs:
                   List<JSONObject> result = new ArrayList<>();
                   for (int i = 0; i < q.length(); i++) {
                       JSONObject item = q.optJSONObject(i);
-                      if (item != null && PaymentParser.parse(item.optString("from"), item.optString("body")).amount > 0) result.add(item);
+                      if (item != null && !deferredPayments.contains(SmsStore.key(item)) && PaymentParser.parse(item.optString("from"), item.optString("body")).amount > 0) result.add(item);
                   }
                   return result;
               }
@@ -1273,7 +1276,7 @@ jobs:
                   });
                   close.setOnClickListener(view -> collapsePanel());
                   pencil.setOnClickListener(view -> { amountLabel.setVisibility(View.GONE); amount.setVisibility(View.VISIBLE); amount.requestFocus(); amount.post(() -> ((InputMethodManager) getSystemService(INPUT_METHOD_SERVICE)).showSoftInput(amount, InputMethodManager.SHOW_IMPLICIT)); });
-                  later.setOnClickListener(view -> { if (item.optBoolean("demo")) { try { SmsStore.complete(this, SmsStore.key(item), null); } catch (RuntimeException e) { error.setVisibility(View.VISIBLE); error.setText(tr("Could not dismiss preview. Try again.")); return; } } hideUntilNextPayment(); hideAll(); Toast.makeText(this, tr("Saved for later in Review"), Toast.LENGTH_SHORT).show(); });
+                  later.setOnClickListener(view -> { if (item.optBoolean("demo")) { try { SmsStore.complete(this, SmsStore.key(item), null); } catch (RuntimeException e) { error.setVisibility(View.VISIBLE); error.setText(tr("Could not dismiss preview. Try again.")); return; } } else deferredPayments.add(SmsStore.key(item)); hidePanel(); updateOverlay(); Toast.makeText(this, tr("Saved for later in Review"), Toast.LENGTH_SHORT).show(); });
                   save.setOnClickListener(view -> {
                       if (item.optBoolean("demo")) {
                           try { SmsStore.complete(this, SmsStore.key(item), null); hidePanel(); updateOverlay(); Toast.makeText(this, tr("Preview complete. No expense was added."), Toast.LENGTH_SHORT).show(); } catch (RuntimeException e) { error.setVisibility(View.VISIBLE); error.setText(tr("Could not finish preview. Try again.")); } return;
