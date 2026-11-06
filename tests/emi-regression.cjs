@@ -5,7 +5,7 @@ const assert=require('assert');const{app,settle}=require('./app-inbox.cjs');
  assert.equal(a.eval("T().filter(x=>x.t==='Income').reduce((s,x)=>s+x.a,0)"),10000,'Recurring salary stays in income');
  assert.equal(a.eval("T().filter(x=>x.t==='Expense').reduce((s,x)=>s+x.a,0)"),2000,'Ongoing rent stays in spending');
  assert.equal(a.eval("tx.find(x=>x.m==='Car EMI').emi"),true);
- assert.equal(a.eval("budgetSummary(new Date().getFullYear()+'-'+String(new Date().getMonth()+1).padStart(2,'0')).totalSpent"),2000,'Scheduled EMI does not consume the spending budget');
+ assert.equal(a.eval("budgetSummary(new Date().getFullYear()+'-'+String(new Date().getMonth()+1).padStart(2,'0')).totalSpent"),0,'An unset separate budget ignores account and EMI spending');
  assert.equal(a.eval('emiBalance()'),1000,'Only two remaining car instalments count; salary and rent are excluded');
  assert.equal(a.eval('emiOutstanding({t:"Expense",a:500,left:0})'),0);
  assert.equal(a.eval('JSON.stringify(safeCloudData().tx.map(x=>x.emi))'),JSON.stringify([false,false,true]),'Backup retains EMI transaction flags');
