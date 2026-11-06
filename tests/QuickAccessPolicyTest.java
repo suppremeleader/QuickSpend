@@ -17,6 +17,10 @@ public class QuickAccessPolicyTest {
         check(QuickAccessPolicy.launchTarget(370,200,-80,-5,400,800)==1,"off-centre ray reaches correct edge");
         check(QuickAccessPolicy.launchTarget(200,400,0,0,400,800)==-1,"hold without pull cancels");
         check(QuickAccessPolicy.launchTarget(200,400,Float.NaN,5,400,800)==-1,"bad pull cancels");
+        check(QuickAccessPolicy.carouselTarget(-192,10,48)==1,"upward slide reaches earlier tag");
+        check(QuickAccessPolicy.carouselTarget(0,10,48)==5,"hold starts at middle tag");
+        check(QuickAccessPolicy.carouselTarget(999,10,48)==9,"carousel clamps at last tag");
+        check(QuickAccessPolicy.carouselTarget(0,0,48)==-1,"empty carousel cancels");
         check(QuickAccessPolicy.dismissTarget(200,704,400,800,1),"normal drag reaches bottom close");
         check(QuickAccessPolicy.dismissTarget(600,2112,1200,2400,3),"close hit testing scales with density");
         check(!QuickAccessPolicy.dismissTarget(200,400,400,800,1),"ordinary move does not dismiss");
@@ -26,7 +30,8 @@ public class QuickAccessPolicyTest {
         check(!QuickAccessPolicy.canSave(true,399,100,72,0,50,false,false),"short tap cannot save");
         check(!QuickAccessPolicy.canSave(true,500,71,72,0,50,false,false),"peek cannot save");
         check(!QuickAccessPolicy.canSave(true,500,100,72,-1,50,false,false),"miss cannot save");
-        check(!QuickAccessPolicy.canSave(true,500,100,72,4,50,false,false),"invalid slot cannot save");
+        check(QuickAccessPolicy.canSave(true,500,100,72,9,50,false,false),"tenth carousel tag can save");
+        check(!QuickAccessPolicy.canSave(true,500,100,72,10,50,false,false),"invalid slot cannot save");
         check(!QuickAccessPolicy.canSave(true,500,100,72,0,Double.NaN,false,false),"bad amount cannot save");
         check(!QuickAccessPolicy.canSave(true,500,100,72,0,50,true,false),"lock cannot save");
         check(!QuickAccessPolicy.canSave(true,500,100,72,0,50,false,true),"cancel cannot save");

@@ -3,6 +3,11 @@ package com.quickspend.app;
 public final class QuickAccessPolicy {
     private QuickAccessPolicy() {}
     public static final long HOLD_MS=400;
+    public static int carouselTarget(float dy,int count,float step){
+        if(count<=0||step<=0||!Float.isFinite(dy))return -1;
+        int index=Math.round(dy/step)+count/2;
+        return Math.max(0,Math.min(count-1,index));
+    }
     public static int target(float x,float y,float width,float height,float band){
         if(width<=0||height<=0||band<=0||!Float.isFinite(x)||!Float.isFinite(y)||x<0||y<0||x>width||y>height)return -1;
         float[] distances={y,width-x,height-y,x};int best=0;
@@ -21,7 +26,7 @@ public final class QuickAccessPolicy {
         return density>0&&width>0&&height>0&&Float.isFinite(x)&&Float.isFinite(y)&&Math.hypot(x-width/2,y-(height-96*density))<=56*density;
     }
     public static boolean canSave(boolean enabled,long held,float travel,float minTravel,int slot,double amount,boolean locked,boolean cancelled){
-        return enabled&&held>=HOLD_MS&&travel>=minTravel&&slot>=0&&slot<4&&Double.isFinite(amount)&&amount>0&&!locked&&!cancelled;
+        return enabled&&held>=HOLD_MS&&travel>=minTravel&&slot>=0&&slot<10&&Double.isFinite(amount)&&amount>0&&!locked&&!cancelled;
     }
 }
 

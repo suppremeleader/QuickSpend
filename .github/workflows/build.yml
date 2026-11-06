@@ -1024,10 +1024,10 @@ jobs:
                               float dx = event.getRawX() - downX, dy = event.getRawY() - downY;
                               dragX=dx; dragY=dy; distance=(float)Math.hypot(dx, dy);
                               if (!moved && distance > ViewConfiguration.get(FloatingCaptureService.this).getScaledTouchSlop()) { moved=true; main.removeCallbacks(hold); if(!quickGesture)showDismissTarget(); }
-                              if (moved) {
+                              if (moved && !quickGesture) {
                                   DisplayMetrics screen = display();
-                                  bubbleParams.x = Math.max(0, Math.min(oldX + Math.round(dx * (quickGesture?0.5f:1f)), screen.widthPixels - dp(60)));
-                                  bubbleParams.y = Math.max(dp(24), Math.min(oldY + Math.round(dy * (quickGesture?0.5f:1f)), screen.heightPixels - dp(60)));
+                                  bubbleParams.x = Math.max(0, Math.min(oldX + Math.round(dx), screen.widthPixels - dp(60)));
+                                  bubbleParams.y = Math.max(dp(24), Math.min(oldY + Math.round(dy), screen.heightPixels - dp(60)));
                                   if (tether != null) { tether.endX=bubbleParams.x+dp(30); tether.endY=bubbleParams.y+dp(30); tether.invalidate(); }
                                   try { windows.updateViewLayout(view, bubbleParams); } catch (RuntimeException ignored) { }
                               }
@@ -1070,7 +1070,7 @@ jobs:
                   List<JSONObject> q=payments();if(q.isEmpty())return false;
                   try {
                       quickItem=new JSONObject(q.get(0).toString());quickPayment=PaymentParser.parse(quickItem.optString("from"),quickItem.optString("body"));
-                      String[] categories=QuickAccessConfig.slots(this,quickPayment.type),labels=new String[4];for(int i=0;i<4;i++)labels[i]=categoryIcon(categories[i])+" "+tr(categories[i]);
+                      String[] categories=QuickAccessConfig.carousel(this,quickPayment.type),labels=new String[categories.length];for(int i=0;i<categories.length;i++)labels[i]=categoryIcon(categories[i])+" "+tr(categories[i]);
                       String amount=("Income".equals(quickPayment.type)?"+₹":"−₹")+quickPayment.amountText()+" · "+tr(quickPayment.type);
                       int[] anchor=new int[2];bubble.getLocationOnScreen(anchor);quickAnchorX=anchor[0]+dp(30);quickAnchorY=anchor[1]+dp(30);
                       quickLayer=new QuickAccessOverlay(this,labels,amount,quickPayment.type,lightMode);
@@ -1085,7 +1085,7 @@ jobs:
                   if(quickLayer==null||bubble==null)return;
                   int[] origin=new int[2],icon=new int[2];quickLayer.getLocationOnScreen(origin);bubble.getLocationOnScreen(icon);
                   quickLayer.bubbleX=icon[0]-origin[0];quickLayer.bubbleY=icon[1]-origin[1];quickLayer.dragging=dragging;
-                  int target=dragging&&Math.hypot(dx,dy)>=dp(72)?QuickAccessPolicy.launchTarget(Math.max(0,Math.min(quickAnchorX-origin[0],quickLayer.getWidth())),Math.max(0,Math.min(quickAnchorY-origin[1],quickLayer.getHeight())),dx,dy,quickLayer.getWidth(),quickLayer.getHeight()):-1;
+                  int target=dragging?QuickAccessPolicy.carouselTarget(dy,QuickAccessConfig.carousel(this,quickPayment.type).length,dp(48)):-1;
                   if(target!=quickLayer.selected&&target>=0)bubble.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP);
                   quickLayer.selected=target;quickLayer.invalidate();
               }
@@ -1093,17 +1093,17 @@ jobs:
               private void finishQuickAccess(float dx,float dy,long held,float travel,int oldX,int oldY) {
                   hideTether();updateQuickAccess(dx,dy,true);
                   int slot=quickLayer==null?-1:quickLayer.selected;
-                  if(quickPayment==null||!QuickAccessPolicy.canSave(QuickAccessConfig.enabled(this),held,travel,dp(72),slot,quickPayment.amount,screenLocked()||appVisible,false)) {hideQuickAccess();animateBubble(oldX,oldY,false);return;}
+                  if(quickPayment==null||!QuickAccessPolicy.canSave(QuickAccessConfig.enabled(this),held,travel,dp(18),slot,quickPayment.amount,screenLocked()||appVisible,false)) {hideQuickAccess();animateBubble(oldX,oldY,false);return;}
                   try {
-                      JSONObject item=quickItem;PaymentParser payment=quickPayment;String category=QuickAccessConfig.slots(this,payment.type)[slot];
+                      JSONObject item=quickItem;PaymentParser payment=quickPayment;String category=QuickAccessConfig.carousel(this,payment.type)[slot];
                       JSONObject entry=new JSONObject().put("t",payment.type).put("a",payment.amount).put("note","").put("c",category).put("m",payment.merchant).put("who","").put("ts",item.optLong("ts",System.currentTimeMillis())).put("settled",0).put("smsFrom",item.optString("from")).put("smsBody",item.optString("body"));
                       dismissingBubble=true;
                       boolean saved=SmsStore.complete(this,SmsStore.key(item),item.optBoolean("demo")?null:entry);
                       String message=item.optBoolean("demo")?"Preview only. No record added.":saved?"Saved to QuickSpend":"This payment was already handled";
                       Toast.makeText(this,tr(message),Toast.LENGTH_SHORT).show();
                       final View released=bubble;final int chosen=slot;int[] layerOrigin=new int[2],bubbleOrigin=new int[2];quickLayer.getLocationOnScreen(layerOrigin);released.getLocationOnScreen(bubbleOrigin);
-                      final float targetX=layerOrigin[0]+(chosen==1?quickLayer.getWidth()-dp(30):chosen==3?dp(30):quickLayer.getWidth()/2f)-bubbleOrigin[0]-dp(30);
-                      final float targetY=layerOrigin[1]+(chosen==0?dp(58):chosen==2?quickLayer.getHeight()-dp(58):quickLayer.getHeight()/2f)-bubbleOrigin[1]-dp(30);hideQuickAccess();
+                      final float targetX=-dp(110);
+                      final float targetY=(chosen-(QuickAccessConfig.carousel(this,payment.type).length-1)/2f)*dp(48);hideQuickAccess();
                       Runnable finish=()->{if(bubble==released){hideBubble();updateOverlay();}};
                       if(motionEnabled()&&released!=null){released.animate().translationX(targetX).translationY(targetY).alpha(0).setDuration(260).withEndAction(finish).start();}else finish.run();
                   } catch(Exception e){dismissingBubble=false;hideQuickAccess();animateBubble(oldX,oldY,false);Toast.makeText(this,tr("Could not save. Check free storage and try again."),Toast.LENGTH_LONG).show();}
