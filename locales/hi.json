@@ -604,5 +604,6 @@
   "Planning reminders are unavailable in this preview.": "इस प्रीव्यू में रिमाइंडर उपलब्ध नहीं हैं।",
   "Some reminders could not be scheduled. Reopen QuickSpend to retry.": "कुछ रिमाइंडर तय नहीं हो पाए। फिर कोशिश करने के लिए QuickSpend खोलें।",
   "Could not import. Your records have not changed.": "आयात नहीं हो सका। आपके रिकॉर्ड नहीं बदले हैं।",
-  "Could not reset. Your saved records have been kept.": "रीसेट नहीं हो सका। आपके सेव रिकॉर्ड सुरक्षित रखे गए हैं।"
+  "Could not reset. Your saved records have been kept.": "रीसेट नहीं हो सका। आपके सेव रिकॉर्ड सुरक्षित रखे गए हैं।",
+  "Discard": "छोड़ें"
 }
