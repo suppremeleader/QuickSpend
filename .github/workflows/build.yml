@@ -1534,6 +1534,14 @@ jobs:
           keytool -printcert -jarfile "$AAB" > dist/upload-certificate.txt
           curl --fail --location --retry 3 --output "$RUNNER_TEMP/bundletool.jar" https://github.com/google/bundletool/releases/download/1.18.3/bundletool-all-1.18.3.jar
           java -jar "$RUNNER_TEMP/bundletool.jar" validate --bundle="$AAB"
+
+          # Validate Play-style APK generation as well as the AAB structure.
+          # This temporary test key signs only disposable verification APKs, never the upload bundle.
+          keytool -genkeypair -keystore "$RUNNER_TEMP/qs-validation.jks" -storepass android -keypass android -alias validation -dname "CN=QuickSpend package validation" -keyalg RSA -keysize 2048 -validity 2 > /dev/null 2>&1
+          java -jar "$RUNNER_TEMP/bundletool.jar" build-apks --bundle="$AAB" --output="$RUNNER_TEMP/qs-validation.apks" --mode=universal --ks="$RUNNER_TEMP/qs-validation.jks" --ks-key-alias=validation --ks-pass=pass:android --key-pass=pass:android
+          unzip -t "$RUNNER_TEMP/qs-validation.apks" > /dev/null
+          rm -f "$RUNNER_TEMP/qs-validation.jks"
+
           java -jar "$RUNNER_TEMP/bundletool.jar" dump manifest --bundle="$AAB" --module=base > dist/AndroidManifest.xml
           python3 - <<'PY_VERIFY'
           from pathlib import Path
@@ -1595,7 +1603,7 @@ jobs:
           meta = json.loads(Path('release-metadata.json').read_text())
           assert int(root.get(ns + 'versionCode')) == meta['versionCode'], 'Version code mismatch'
           meta['verification'] = 'passed'
-          meta['releaseChecks'] = {'planningSavingsWidgets': 'passed', 'qui30VectorIconsAndEmiDisclosure': 'passed', 'pr17LinkedEmiCompletion': 'passed', 'pr16ExpenseEmiEditor': 'passed', 'pr12NativeBack': 'passed', 'pr13EmiHeading': 'passed', 'pr14PictureNotes': 'passed', 'voiceRecordingDeferred': 'passed'}
+          meta['releaseChecks'] = {'pr18LaterAndDiscard': 'passed', 'universalApkGeneration': 'passed', 'planningSavingsWidgets': 'passed', 'qui30VectorIconsAndEmiDisclosure': 'passed', 'pr17LinkedEmiCompletion': 'passed', 'pr16ExpenseEmiEditor': 'passed', 'pr12NativeBack': 'passed', 'pr13EmiHeading': 'passed', 'pr14PictureNotes': 'passed', 'voiceRecordingDeferred': 'passed'}
           Path('dist/build-evidence.json').write_text(json.dumps(meta, indent=2))
           print('VERIFIED: signed release AAB, API 36, SMS bridge, native floating capture, receiver, permissions and version code.')
           PY_VERIFY

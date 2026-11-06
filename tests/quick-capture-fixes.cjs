@@ -10,6 +10,7 @@ const fs=require('fs'),path=require('path'),assert=require('assert'),{app,settle
  assert.match(a.nodes.get('#sheet').innerHTML,/delete-entry/,'Discard uses the destructive action styling');
  assert.equal(a.eval('cur.cat'),'Eating out');assert.equal(a.eval('BUDGET_CATS.includes("Eating out")'),true);
  assert.match(a.nodes.get('#sheet').innerHTML,/placeholder="Optional"/);
+ const ledgerBeforeDiscard=a.eval('JSON.stringify({tx,pending,recur})');a.c.closeSheet(false);assert.equal(a.eval('JSON.stringify({tx,pending,recur})'),ledgerBeforeDiscard,'Discard closes an unsaved manual entry without creating or deferring a payment');a.c.openSheet({manual:true,m:'Manual entry',a:125,note:'Lunch with family',c:'Eating out'});
  a.c.save();assert.equal(a.eval('tx[0].note'),'Lunch with family');assert.equal(a.eval('tx[0].c'),'Eating out');assert.equal(a.eval('budgetSummary(budgetMonth).spent["Eating out"]'),125);
  a.c.openTransactionEdit(a.eval('tx[0].id'));assert.equal(a.eval('cur.note'),'Lunch with family');a.eval("cur.note='Changed comment';save()");assert.equal(a.eval('tx.length'),1);assert.equal(a.eval('tx[0].note'),'Changed comment');
  const saved=a.eval("localStorage.getItem('qs1')"),b=app({savedLanguage:'en',savedState:saved});await settle();assert.equal(b.eval('tx[0].note'),'Changed comment');assert.equal(b.eval('CATS.Expense.some(c=>c[1]==="Eating out")'),true);
