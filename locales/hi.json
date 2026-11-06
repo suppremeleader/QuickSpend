@@ -605,5 +605,13 @@
   "Some reminders could not be scheduled. Reopen QuickSpend to retry.": "कुछ रिमाइंडर तय नहीं हो पाए। फिर कोशिश करने के लिए QuickSpend खोलें।",
   "Could not import. Your records have not changed.": "आयात नहीं हो सका। आपके रिकॉर्ड नहीं बदले हैं।",
   "Could not reset. Your saved records have been kept.": "रीसेट नहीं हो सका। आपके सेव रिकॉर्ड सुरक्षित रखे गए हैं।",
-  "Discard": "छोड़ें"
+  "Discard": "छोड़ें",
+  "Hold. Slide. Release.": "दबाएँ। सरकाएँ। छोड़ें।",
+  "Hold the bubble to reveal up to ten categories. Without lifting your finger, slide up or down and release on the highlighted category. Drag without holding to the bottom close target to keep the payment in Review.": "दस तक श्रेणियाँ देखने के लिए बबल दबाकर रखें। उँगली उठाए बिना ऊपर या नीचे सरकाएँ और चुनी हुई श्रेणी पर छोड़ें। भुगतान समीक्षा में रखने के लिए बिना दबाए बबल को नीचे बंद करने वाले निशान पर खींचें।",
+  "Choose the first four tags. Quick Access fills the rest of the top ten from your categories. Income keeps its own list.": "पहले चार टैग चुनें। बाकी टैग आपकी श्रेणियों से जुड़ेंगे, अधिकतम दस तक। आमदनी की सूची अलग रहती है।",
+  "Slide up or down to choose": "चुनने के लिए ऊपर या नीचे सरकाएँ",
+  "First": "पहला",
+  "Second": "दूसरा",
+  "Third": "तीसरा",
+  "Fourth": "चौथा"
 }

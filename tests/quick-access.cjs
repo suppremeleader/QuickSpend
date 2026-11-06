@@ -8,6 +8,8 @@ const assert=require('assert');const{app,settle}=require('./app-inbox.cjs');
  a.eval("quickType='Income';paintQuickAccessSettings()");assert.match(a.nodes.get('#sheet').innerHTML,/Salary/);assert.doesNotMatch(a.nodes.get('#sheet').innerHTML,/option value="Food"/,'Income has separate valid targets');
  fail=true;await a.c.saveQuickAccessSettings(false);assert.equal(a.eval('quickDraft.enabled'),true,'Failed preference write keeps displayed state');assert.match(a.nodes.get('#quick-result').textContent,/Storage unavailable/);
  fail=false;await a.c.saveQuickAccessSettings(false);assert.equal(stored.enabled,false);await a.c.openQuickAccessSettings();assert.equal(a.eval('quickDraft.enabled'),false,'Reload uses device preference');
- a.c.SB=()=>null;await a.c.openQuickAccessSettings();assert.match(a.nodes.get('#quick-result').textContent,/Android app/);
+ a.eval("language='hi'");await a.c.openQuickAccessSettings();assert.match(a.nodes.get('#sheet').innerHTML,/दबाएँ। सरकाएँ। छोड़ें।/);assert.match(a.nodes.get('#sheet').innerHTML,/पहला/);
+ a.eval("language='en'");a.c.SB=()=>null;await a.c.openQuickAccessSettings();assert.match(a.nodes.get('#quick-result').textContent,/Android app/);
  console.log('PASS: Quick Access off by default, native settings persistence, custom categories, separate income slots, failure feedback and unavailable bridge');
 })().catch(e=>{console.error(e);process.exit(1)});
+

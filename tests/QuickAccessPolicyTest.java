@@ -21,6 +21,13 @@ public class QuickAccessPolicyTest {
         check(QuickAccessPolicy.carouselTarget(0,10,48)==5,"hold starts at middle tag");
         check(QuickAccessPolicy.carouselTarget(999,10,48)==9,"carousel clamps at last tag");
         check(QuickAccessPolicy.carouselTarget(0,0,48)==-1,"empty carousel cancels");
+        check(QuickAccessPolicy.carouselTarget(0,10,Float.NaN)==-1,"invalid step cancels");
+        for(float height:new float[]{300,480,800})for(float density:new float[]{1,3})for(int count:new int[]{1,5,10})for(float fraction:new float[]{.05f,.5f,.95f}){
+            float h=height*density,anchorY=h*fraction,step=QuickAccessPolicy.carouselStep(h,density,count);int origin=QuickAccessPolicy.carouselOrigin(count,h,anchorY,density);
+            check(QuickAccessPolicy.carouselTarget(-10000,count,step,origin)==0,"first category reachable");check(QuickAccessPolicy.carouselTarget(10000,count,step,origin)==count-1,"last category reachable");
+            for(int chosen=0;chosen<count;chosen++){check(QuickAccessPolicy.carouselTarget((chosen-origin)*step,count,step,origin)==chosen,"display and save indices match");float[] rail=QuickAccessPolicy.carouselRail(count,chosen,h,anchorY,density);int start=(int)rail[0],visible=(int)rail[1];check(chosen>=start&&chosen<start+visible,"selected tag remains visible");check(rail[3]>=22*density&&rail[3]+(visible-1)*rail[2]<=h-22*density,"whole rail stays on screen");check(visible==1||rail[2]>=44*density,"visible tags do not overlap");}
+        }
+
         check(QuickAccessPolicy.dismissTarget(200,704,400,800,1),"normal drag reaches bottom close");
         check(QuickAccessPolicy.dismissTarget(600,2112,1200,2400,3),"close hit testing scales with density");
         check(!QuickAccessPolicy.dismissTarget(200,400,400,800,1),"ordinary move does not dismiss");

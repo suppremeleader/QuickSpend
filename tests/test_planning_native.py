@@ -15,6 +15,13 @@ class PlanningManifestTest(unittest.TestCase):
    for r in rs:
     meta=r.find('meta-data')
     if meta is not None:ET.parse(ROOT/'native/res/xml'/ (meta.get(a+'resource').split('/')[-1]+'.xml'))
+ def test_native_category_vectors_are_packaged_and_valid(self):
+  source=(ROOT/'native/CategorySymbols.java').read_text();a='{http://schemas.android.com/apk/res/android}'
+  for name in set(__import__('re').findall(r'R.drawable.(qs_category_\w+)',source)):
+   root=ET.parse(ROOT/'native/res/drawable'/f'{name}.xml').getroot()
+   self.assertEqual(root.tag,'vector');self.assertEqual(root.get(a+'viewportWidth'),'28')
+   self.assertTrue(root.findall('.//path'));self.assertTrue(all(p.get(a+'pathData') for p in root.findall('.//path')))
+  build=(ROOT/'.github/workflows/build.yml').read_text();self.assertIn('CategorySymbols.drawable(this,label)',build);self.assertNotIn('categoryIcon(String',build)
  def test_no_payment_engine_in_native_reminder(self):
   source=(ROOT/'native/PlanningBridge.java').read_text()
   self.assertNotIn('SmsStore.complete',source);self.assertNotIn('setExact',source);self.assertIn('stamp',source);self.assertIn('setAndAllowWhileIdle',source)
