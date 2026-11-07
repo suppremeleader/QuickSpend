@@ -45,7 +45,7 @@ public final class CaptureRecovery {
         JSONArray q=SmsStore.pending(c);
         for(int i=0;i<q.length();i++) {
             JSONObject p=q.optJSONObject(i);
-            if(p!=null && PaymentParser.parse(p.optString("from"),p.optString("body")).amount>0) return true;
+            if(p!=null && PaymentParser.parse(p).amount>0) return true;
         }
         return false;
     }
@@ -101,3 +101,4 @@ public final class CaptureRecovery {
     }
     private CaptureRecovery() {}
 }
+
