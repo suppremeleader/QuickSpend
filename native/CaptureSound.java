@@ -21,7 +21,7 @@ public final class CaptureSound {
             Set<String> current=new HashSet<>();
             for(int i=0;i<pending.length();i++){
                 JSONObject item=pending.optJSONObject(i);
-                if(item!=null&&PaymentParser.parse(item.optString("from"),item.optString("body")).amount>0)current.add(SmsStore.key(item));
+                if(item!=null&&PaymentParser.parse(item).amount>0)current.add(SmsStore.key(item));
             }
             SharedPreferences prefs=c.getSharedPreferences("qs_float",0);
             Set<String> seen=new HashSet<>(prefs.getStringSet("capture_sound_seen",new HashSet<>()));

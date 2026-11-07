@@ -637,5 +637,19 @@
   "Hold, slide and release": "दबाएँ, सरकाएँ और छोड़ें",
   "EMI paid": "चुकाई गई किस्तें",
   "paid": "चुकाया",
-  "remaining": "बाकी"
+  "remaining": "बाकी",
+  "PhonePe capture": "PhonePe भुगतान कैप्चर",
+  "Read supported PhonePe payment alerts": "समर्थित PhonePe भुगतान सूचनाएँ पढ़ें",
+  "Enable PhonePe capture": "PhonePe कैप्चर चालू करें",
+  "Turn off PhonePe capture": "PhonePe कैप्चर बंद करें",
+  "PhonePe capture is on.": "PhonePe कैप्चर चालू है।",
+  "PhonePe capture is off.": "PhonePe कैप्चर बंद है।",
+  "Allow QuickSpend in Android Notification access to finish setup.": "सेटअप पूरा करने के लिए Android में QuickSpend को सूचनाएँ पढ़ने की अनुमति दें।",
+  "PhonePe capture requires the updated Android app.": "PhonePe कैप्चर के लिए नया Android ऐप चाहिए।",
+  "Could not open notification access.": "सूचना अनुमति की सेटिंग नहीं खुल सकी।",
+  "Open QuickSpend to review this payment.": "इस भुगतान की समीक्षा के लिए QuickSpend खोलें।",
+  "Possible duplicate. Check the other payment before saving.": "यह भुगतान दो बार आ सकता है। सहेजने से पहले दूसरा भुगतान देखें।",
+  "This may be the same payment as a nearby SMS or PhonePe alert. Save it anyway?": "यह पास के SMS या PhonePe अलर्ट वाला ही भुगतान हो सकता है। फिर भी सहेजें?",
+  "Android Notification access lets QuickSpend see notifications. QuickSpend checks only supported incoming PhonePe payment alerts and saves their payment details in Review. Your backup settings apply to these entries.": "Android की सूचना अनुमति से QuickSpend सूचनाएँ देख सकता है। QuickSpend केवल समर्थित आने वाले PhonePe भुगतान अलर्ट की जाँच करता है और भुगतान विवरण समीक्षा में रखता है। आपकी बैकअप सेटिंग इन प्रविष्टियों पर लागू होती है।",
+  "New payments appear here": "नए भुगतान यहाँ दिखेंगे"
 }
