@@ -28,25 +28,42 @@ if(require.main===module)(async()=>{
  a=app({savedLanguage:'en'});await settle();
  const now=Date.now(),phonepe={sourceKey:'phonepe:fixture',from:'PhonePe',amount:1,kind:'Income',merchant:'Example Sender',account:'Central Bank Of India 1234',ts:now};
  a.inbox.items.push(phonepe);await a.c.pull(true);await a.c.pull(true);
- assert.equal(a.eval("pending.filter(p=>isPhonePePayment(p)).length"),1,'Repeated PhonePe inbox reads import once');
- assert.equal(a.eval("pending.find(p=>isPhonePePayment(p)).acc"),'Central Bank Of India 1234');
- assert.equal(a.eval("pending.find(p=>isPhonePePayment(p)).kind"),'Income');
- assert.equal(a.eval("pending.find(p=>isPhonePePayment(p)).m"),'Example Sender');
+ assert.equal(a.eval("pending.filter(p=>isUpiPayment(p)).length"),1,'Repeated PhonePe inbox reads import once');
+ assert.equal(a.eval("pending.find(p=>isUpiPayment(p)).acc"),'Central Bank Of India 1234');
+ assert.equal(a.eval("pending.find(p=>isUpiPayment(p)).kind"),'Income');
+ assert.equal(a.eval("pending.find(p=>isUpiPayment(p)).m"),'Example Sender');
  assert.equal(a.eval('tx.length'),0,'PhonePe stays pending until the user saves');
  assert.match(a.nodes.get('#s-review').innerHTML,/Income · PhonePe/);
  a.inbox.items.push({sourceKey:'sms-fixture',from:'CBI',body:'Rs.1 credited to your account XXXX1234',ts:now+1000});
  await a.c.pull(true);
- a.eval("openSheet(pending.find(p=>isPhonePePayment(p)))");assert.equal(a.eval('hasPossiblePaymentDuplicate(cur)'),true);
+ a.eval("openSheet(pending.find(p=>isUpiPayment(p)))");assert.equal(a.eval('hasPossiblePaymentDuplicate(cur)'),true);
  a.c.confirm=()=>false;a.c.save();assert.equal(a.eval('tx.length'),0,'Declining duplicate confirmation keeps both alerts in Review');
  a.c.confirm=()=>true;a.c.save();await settle();assert.equal(a.eval('tx.length'),1);
  assert.equal(a.eval('tx[0].acc'),'Central Bank Of India 1234');assert.ok(a.completed.includes(phonepe.sourceKey));
  a.eval("openSheet(pending.find(p=>p.sourceKey==='sms-fixture'))");assert.equal(a.eval('hasPossiblePaymentDuplicate(cur)'),true,'SMS also warns after saving PhonePe');
- let access=false,enabled=false,settingsOpened=0;
- a.c.SB=()=>({phonePeStatus:async()=>({enabled,allowed:access}),setPhonePeCapture:async opt=>({enabled:enabled=opt.enabled,allowed:access}),openPhonePeAccess:async()=>{settingsOpened++}});
- a.c.openPhonePeSettings();await settle();assert.match(a.nodes.get('#phonepe-status').textContent,/off/);
- await a.c.enablePhonePeCapture();assert.equal(settingsOpened,1);assert.match(a.nodes.get('#phonepe-status').textContent,/finish setup/);
- access=true;await a.c.refreshPhonePeStatus();assert.match(a.nodes.get('#phonepe-status').textContent,/is on/);
- await a.c.disablePhonePeCapture();assert.match(a.nodes.get('#phonepe-status').textContent,/off/);
+ const gpay={sourceKey:'upi:gpay',from:'Google Pay',amount:50,kind:'Expense',merchant:'Market',ts:now+3000};
+ a.inbox.items.push(gpay);await a.c.pull(true);
+ assert.equal(a.eval("pending.find(p=>p.sourceKey==='upi:gpay').kind"),'Expense');
+ assert.match(a.nodes.get('#s-review').innerHTML,/Expense · Google Pay/);
+ let access=false,enabled=false,settingsOpened=0,demos=0;
+ const previousTransport=a.c.window.Capacitor.nativePromise;
+ a.c.window.Capacitor.nativePromise=async (plugin,method,options)=>{
+  if(plugin==='SmsBridge'){
+   if(method==='upiCaptureStatus')return{enabled,allowed:access};
+   if(method==='setUpiCapture')return{enabled:enabled=options.enabled,allowed:access};
+   if(method==='openUpiNotificationAccess'){settingsOpened++;return{}}
+   if(method==='testOverlay'){demos++;return{}}
+  }
+  return previousTransport(plugin,method,options)
+ };
+ a.c.openData();assert.doesNotMatch(a.nodes.get('#sheet').innerHTML,/PhonePe capture/);
+ a.c.openFloatingSettings();await settle();assert.match(a.nodes.get('#upi-status').textContent,/off/);
+ assert.match(a.nodes.get('#sheet').innerHTML,/Test floater/);
+ await a.c.manageUpiAccess();assert.equal(settingsOpened,1);assert.match(a.nodes.get('#upi-status').textContent,/finish setup/);
+ access=true;await a.c.refreshUpiStatus();assert.match(a.nodes.get('#upi-status').textContent,/is on/);
+ const beforeDemo=a.eval('JSON.stringify({pending,tx})');
+ await a.c.testFloating(true);assert.equal(demos,1);assert.match(a.nodes.get('#float-demo-status').textContent,/Demo ready/);
+ assert.equal(a.eval('JSON.stringify({pending,tx})'),beforeDemo);
  a=app({broken:true});await settle();assert.match(a.nodes.get('#review-sync').textContent,/Inbox unavailable/,'Sync failure must be visible');
  console.log('PASS: full app boot, onboarding payment retention, JSON native inbox, one-tap uncategorised Save, native overlay saves, edit without duplicates, Android resume refresh, visible sync errors');
 })().catch(e=>{console.error(e);process.exit(1)});

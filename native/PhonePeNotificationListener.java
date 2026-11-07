@@ -12,14 +12,15 @@ import androidx.core.app.NotificationManagerCompat;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 
+// Retain the component name so Android keeps an existing notification-access grant.
 public final class PhonePeNotificationListener extends NotificationListenerService {
     static boolean enabled(Context context) {
-        return context.getSharedPreferences("qs_float", MODE_PRIVATE).getBoolean("phonepe_capture", false);
+        return context.getSharedPreferences("qs_float", MODE_PRIVATE).getBoolean("upi_capture", false);
     }
 
     static boolean setEnabled(Context context, boolean enabled) {
         return context.getSharedPreferences("qs_float", MODE_PRIVATE).edit()
-                .putBoolean("phonepe_capture", enabled).commit();
+                .putBoolean("upi_capture", enabled).commit();
     }
 
     static boolean allowed(Context context) {
@@ -37,27 +38,30 @@ public final class PhonePeNotificationListener extends NotificationListenerServi
     }
 
     @Override public void onNotificationPosted(StatusBarNotification posted) {
-        if (posted == null || !PhonePePayment.PACKAGE.equals(posted.getPackageName()) || !enabled(this)) return;
+        if (posted == null || UpiPayment.appName(posted.getPackageName()) == null || !enabled(this)) return;
         Notification notice = posted.getNotification();
-        if (notice == null || notice.extras == null || (notice.flags & Notification.FLAG_GROUP_SUMMARY) != 0) return;
+        if (notice == null || notice.extras == null || (notice.flags & Notification.FLAG_GROUP_SUMMARY) != 0
+                || (UpiPayment.needsUpiMarker(posted.getPackageName()) && Notification.CATEGORY_MESSAGE.equals(notice.category))
+                || Notification.CATEGORY_PROMO.equals(notice.category)
+                || Notification.CATEGORY_PROGRESS.equals(notice.category)) return;
         try {
             String title = text(notice.extras, Notification.EXTRA_TITLE);
-            PhonePePayment payment = PhonePePayment.parse(posted.getPackageName(), title,
+            UpiPayment payment = UpiPayment.parse(posted.getPackageName(), title,
                     text(notice.extras, Notification.EXTRA_BIG_TEXT));
-            if (payment == null) payment = PhonePePayment.parse(posted.getPackageName(), title,
+            if (payment == null) payment = UpiPayment.parse(posted.getPackageName(), title,
                     text(notice.extras, Notification.EXTRA_TEXT));
             if (payment == null) return;
             long stamp = notice.when > 0 ? notice.when : posted.getPostTime();
-            String identity = posted.getKey() + "|" + stamp + "|" + payment.amount + "|" + payment.sender + "|" + payment.account;
+            String identity = posted.getKey() + "|" + stamp + "|" + payment.kind + "|" + payment.amount + "|" + payment.counterparty + "|" + payment.account;
             byte[] digest = MessageDigest.getInstance("SHA-256").digest(identity.getBytes(StandardCharsets.UTF_8));
-            StringBuilder key = new StringBuilder(PhonePePayment.KEY_PREFIX);
+            StringBuilder key = new StringBuilder(UpiPayment.KEY_PREFIX);
             for (byte value : digest) {
                 key.append(Character.forDigit((value >>> 4) & 15, 16));
                 key.append(Character.forDigit(value & 15, 16));
             }
-            SmsStore.enqueuePhonePe(this, payment, key.toString(), posted.getPostTime());
+            SmsStore.enqueueUpi(this, payment, key.toString(), posted.getPostTime());
         } catch (Exception failure) {
-            android.util.Log.w("QuickSpend", "Could not queue PhonePe payment");
+            android.util.Log.w("QuickSpend", "Could not queue UPI payment");
         }
     }
 }

@@ -1,6 +1,6 @@
 const fs=require('fs'),vm=require('vm'),assert=require('assert');
 const html=fs.readFileSync(require('path').join(__dirname,'../index.html'),'utf8');
-const paymentHelpers=html.slice(html.indexOf('function isPhonePePayment('),html.indexOf('function save(){'));
+const paymentHelpers=html.slice(html.indexOf('function isUpiPayment('),html.indexOf('function save(){'));
 const importer=paymentHelpers+html.slice(html.indexOf('function deletedSource('),html.indexOf('function deletionKeys('))+html.slice(html.indexOf('let pullingNative=false;'),html.indexOf('function openFloatingSettings()'));
 function setup(snapshot,{storageWorks=true}={}){
  const seen=new Set(),nativePending=JSON.parse(JSON.stringify(snapshot.items||[])),nativeSaved=JSON.parse(JSON.stringify(snapshot.entries||[]));let acknowledged=[],completed=[],writes=0;
@@ -27,7 +27,7 @@ function setup(snapshot,{storageWorks=true}={}){
  h.c.pending=[];await h.c.pull(true);assert.equal(h.c.pending.length,1,'Native inbox is authoritative even if local pending is lost');
  h=setup({items:[{...real,sourceKey:'native-parser',body:'invalid',amount:250,kind:'Income',merchant:'Asha'}]});await h.c.pull(true);assert.equal(h.c.pending[0].a,250);assert.equal(h.c.pending[0].kind,'Income');
  // Exercise the actual Review Save function, including local-storage failure.
- const saveCode=html.slice(html.indexOf('function isPhonePePayment('),html.indexOf('const MN='));
+ const saveCode=html.slice(html.indexOf('function isUpiPayment('),html.indexOf('const MN='));
  function saving(works=true){
   const c={noteBusy:false,noteAttachment:()=>'',noteMessage(){},L:x=>x,cur:{id:1,m:'Shop',a:125,type:'Expense',cat:'Food',sourceKey:'review-save',acc:'Main'},tx:[],pending:[{id:1,sourceKey:'review-save'}],recur:[],memory:{},sid:200,CATS:{Expense:[['','Food']]},SB:()=>({completeSms:async()=>{c.completed++}}),persist:()=>works,closeSheet:()=>{c.closed++},render(){},paint(){},fd:()=> '31 Oct',alert:()=>{c.alerted++},completed:0,closed:0,alerted:0};
   vm.createContext(c);vm.runInContext(saveCode,c);return c;

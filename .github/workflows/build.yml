@@ -95,8 +95,8 @@ jobs:
           java -cp /tmp/qs-motion CaptureWakePolicyTest
           javac -d /tmp/qs-motion native/CaptureSoundPolicy.java tests/CaptureSoundPolicyTest.java
           java -cp /tmp/qs-motion CaptureSoundPolicyTest
-          javac -d /tmp/qs-motion native/PhonePePayment.java tests/PhonePePaymentTest.java
-          java -cp /tmp/qs-motion com.quickspend.app.PhonePePaymentTest
+          javac -d /tmp/qs-motion native/UpiPayment.java tests/UpiPaymentTest.java
+          java -cp /tmp/qs-motion com.quickspend.app.UpiPaymentTest
       - uses: android-actions/setup-android@v3
         with:
           packages: platform-tools
@@ -266,7 +266,7 @@ jobs:
             }
 
             @PluginMethod
-            public void phonePeStatus(PluginCall call) {
+            public void upiCaptureStatus(PluginCall call) {
               JSObject result = new JSObject();
               result.put("enabled", PhonePeNotificationListener.enabled(getContext()));
               result.put("allowed", PhonePeNotificationListener.allowed(getContext()));
@@ -274,16 +274,16 @@ jobs:
             }
 
             @PluginMethod
-            public void setPhonePeCapture(PluginCall call) {
+            public void setUpiCapture(PluginCall call) {
               if (!PhonePeNotificationListener.setEnabled(getContext(), Boolean.TRUE.equals(call.getBoolean("enabled")))) {
                 call.reject("Could not save. Try again.");
                 return;
               }
-              phonePeStatus(call);
+              upiCaptureStatus(call);
             }
 
             @PluginMethod
-            public void openPhonePeAccess(PluginCall call) {
+            public void openUpiNotificationAccess(PluginCall call) {
               getActivity().runOnUiThread(() -> {
                 try {
                   getActivity().startActivity(new Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS));
@@ -472,7 +472,10 @@ jobs:
                 call.reject("Enable the floating shortcut first"); return;
               }
               try {
-                SmsStore.enqueue(getContext(), "QuickSpend preview", "Rs. 1.00 debited at QuickSpend preview on today", System.currentTimeMillis(), true);
+                android.content.Context context = getContext().getApplicationContext();
+                SmsStore.enqueue(context, "QuickSpend preview", "Rs. 1.00 debited at QuickSpend preview on today", System.currentTimeMillis(), true);
+                new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(
+                    () -> FloatingCaptureService.refresh(context, false), SmsStore.DEMO_LIFETIME_MS);
                 call.resolve();
               } catch (Exception e) { call.reject("Could not prepare test bubble", e); }
             }
@@ -580,8 +583,8 @@ jobs:
                   this.merchant = merchant;
               }
               public static PaymentParser parse(JSONObject item) {
-                  if (SmsStore.key(item).startsWith(PhonePePayment.KEY_PREFIX)) {
-                      return new PaymentParser(item.optDouble("amount", 0), "Income", item.optString("merchant", "PhonePe"));
+                  if (UpiPayment.isAppAlert(SmsStore.key(item))) {
+                      return new PaymentParser(item.optDouble("amount", 0), item.optString("kind", "Income"), item.optString("merchant", "UPI payment"));
                   }
                   return parse(item.optString("from"), item.optString("body"));
               }
@@ -626,6 +629,7 @@ jobs:
           /** Native inbox and completed entries survive app closure until JavaScript acknowledges them. */
           public final class SmsStore {
               private static final Object LOCK = new Object();
+              static final long DEMO_LIFETIME_MS = 120_000L;
               private static final String SAVED = "overlay_saved";
               private static final String HANDLED = "overlay_handled";
               private static SharedPreferences prefs(Context c) { return c.getSharedPreferences("qs_sms", Context.MODE_PRIVATE); }
@@ -638,10 +642,13 @@ jobs:
                   return item.optLong("ts") + ":" + Integer.toHexString((item.optString("from") + "|" + item.optString("body")).hashCode());
               }
               private static JSONArray inbox(SharedPreferences p) {
-                  JSONArray result = array(p, "queue");
-                  for (int i = 0; i < result.length(); i++) {
-                      JSONObject item = result.optJSONObject(i);
-                      if (item != null) try { item.put("sourceKey", key(item)); } catch (JSONException impossible) { throw new IllegalStateException(impossible); }
+                  JSONArray source = array(p, "queue"), result = new JSONArray();
+                  long now = System.currentTimeMillis();
+                  for (int i = 0; i < source.length(); i++) {
+                      JSONObject item = source.optJSONObject(i);
+                      if (item == null || (item.optBoolean("demo") && now - item.optLong("ts") >= DEMO_LIFETIME_MS)) continue;
+                      try { item.put("sourceKey", key(item)); result.put(item); }
+                      catch (JSONException impossible) { throw new IllegalStateException(impossible); }
                   }
                   return result;
               }
@@ -653,9 +660,9 @@ jobs:
                       enqueue(c, new JSONObject().put("from", from).put("body", body).put("ts", ts).put("demo", demo));
                   } catch (JSONException e) { throw new IllegalStateException("Could not queue payment", e); }
               }
-              static void enqueuePhonePe(Context c, PhonePePayment payment, String sourceKey, long ts) throws JSONException {
-                  enqueue(c, new JSONObject().put("from", "PhonePe").put("ts", ts).put("sourceKey", sourceKey)
-                          .put("amount", payment.amount).put("kind", "Income").put("merchant", payment.sender)
+              static void enqueueUpi(Context c, UpiPayment payment, String sourceKey, long ts) throws JSONException {
+                  enqueue(c, new JSONObject().put("from", payment.app).put("ts", ts).put("sourceKey", sourceKey)
+                          .put("amount", payment.amount).put("kind", payment.kind).put("merchant", payment.counterparty)
                           .put("account", payment.account));
               }
               private static void enqueue(Context c, JSONObject item) {
@@ -668,20 +675,20 @@ jobs:
                           for (int i = 0; i < q.length(); i++) if (key.equals(key(q.getJSONObject(i)))) return;
                           for (int i = 0; i < handled.length(); i++) if (key.equals(handled.optString(i))) return;
                           JSONArray clean = new JSONArray();
-                          for (int i = 0; i < q.length(); i++) if (!q.getJSONObject(i).optBoolean("demo")) clean.put(q.get(i));
+                          for (int i = 0; i < q.length(); i++) if (!item.optBoolean("demo") || !q.getJSONObject(i).optBoolean("demo")) clean.put(q.get(i));
                           clean.put(item);
                           SharedPreferences.Editor edit = p.edit().putString("queue", clean.toString());
-                          if (key.startsWith(PhonePePayment.KEY_PREFIX)) {
-                              JSONArray prior = array(p, "recent_phonepe"), recent = new JSONArray();
+                          if (UpiPayment.isAppAlert(key)) {
+                              JSONArray prior = array(p, "recent_upi"), recent = new JSONArray();
                               long now = item.optLong("ts");
                               for (int i = Math.max(0, prior.length() - 49); i < prior.length(); i++) {
                                   JSONObject candidate = prior.optJSONObject(i);
-                                  if (candidate != null && Math.abs(now - candidate.optLong("ts")) <= PhonePePayment.DUPLICATE_WINDOW_MS) {
+                                  if (candidate != null && Math.abs(now - candidate.optLong("ts")) <= UpiPayment.DUPLICATE_WINDOW_MS) {
                                       recent.put(candidate);
                                   }
                               }
-                              recent.put(new JSONObject().put("amount", item.getDouble("amount")).put("ts", now));
-                              edit.putString("recent_phonepe", recent.toString());
+                              recent.put(new JSONObject().put("amount", item.getDouble("amount")).put("ts", now).put("kind", item.getString("kind")));
+                              edit.putString("recent_upi", recent.toString());
                           }
                           persist(edit);
                       } catch (JSONException e) { throw new IllegalStateException("Could not queue payment", e); }
@@ -690,15 +697,14 @@ jobs:
                   QsWidgets.updateAll(c);
               }
               static boolean requiresReview(Context c, JSONObject item) {
-                  if (key(item).startsWith(PhonePePayment.KEY_PREFIX)) return true;
+                  if (UpiPayment.isAppAlert(key(item))) return true;
                   if (item.optBoolean("demo")) return false;
                   PaymentParser payment = PaymentParser.parse(item);
-                  if (!"Income".equals(payment.type)) return false;
                   synchronized (LOCK) {
-                      JSONArray recent = array(prefs(c), "recent_phonepe");
+                      JSONArray recent = array(prefs(c), "recent_upi");
                       for (int i = 0; i < recent.length(); i++) {
                           JSONObject prior = recent.optJSONObject(i);
-                          if (prior != null && PhonePePayment.nearbyIncome(payment.amount, item.optLong("ts"),
+                          if (prior != null && payment.type.equals(prior.optString("kind")) && UpiPayment.nearby(payment.amount, item.optLong("ts"),
                                   prior.optDouble("amount"), prior.optLong("ts"))) return true;
                       }
                   }
@@ -745,7 +751,7 @@ jobs:
               }
               public static void clear(Context c) {
                   synchronized (LOCK) {
-                      persist(prefs(c).edit().remove("queue").remove(SAVED).remove(HANDLED).remove("recent_phonepe"));
+                      persist(prefs(c).edit().remove("queue").remove(SAVED).remove(HANDLED).remove("recent_phonepe").remove("recent_upi"));
                       CaptureCatalog.clear(c);
                   }
                   QsWidgets.updateAll(c);
@@ -1021,7 +1027,10 @@ jobs:
                   List<JSONObject> result = new ArrayList<>();
                   for (int i = 0; i < q.length(); i++) {
                       JSONObject item = q.optJSONObject(i);
-                      if (item != null && !deferredPayments.contains(SmsStore.key(item)) && PaymentParser.parse(item).amount > 0) result.add(item);
+                      if (item != null && !deferredPayments.contains(SmsStore.key(item)) && PaymentParser.parse(item).amount > 0) {
+                          if (item.optBoolean("demo")) return java.util.Collections.singletonList(item);
+                          result.add(item);
+                      }
                   }
                   return result;
               }
@@ -1348,7 +1357,7 @@ jobs:
                   });
                   close.setOnClickListener(view -> collapsePanel());
                   pencil.setOnClickListener(view -> { amountLabel.setVisibility(View.GONE); amount.setVisibility(View.VISIBLE); amount.requestFocus(); amount.post(() -> ((InputMethodManager) getSystemService(INPUT_METHOD_SERVICE)).showSoftInput(amount, InputMethodManager.SHOW_IMPLICIT)); });
-                  later.setOnClickListener(view -> { if (item.optBoolean("demo")) { try { SmsStore.complete(this, SmsStore.key(item), null); } catch (RuntimeException e) { error.setVisibility(View.VISIBLE); error.setText(tr("Could not dismiss preview. Try again.")); return; } } else deferredPayments.add(SmsStore.key(item)); hidePanel(); updateOverlay(); Toast.makeText(this, tr("Saved for later in Review"), Toast.LENGTH_SHORT).show(); });
+                  later.setOnClickListener(view -> { if (item.optBoolean("demo")) { try { SmsStore.complete(this, SmsStore.key(item), null); } catch (RuntimeException e) { error.setVisibility(View.VISIBLE); error.setText(tr("Could not dismiss preview. Try again.")); return; } } else deferredPayments.add(SmsStore.key(item)); hidePanel(); updateOverlay(); Toast.makeText(this, tr(item.optBoolean("demo") ? "Preview complete. No expense was added." : "Saved for later in Review"), Toast.LENGTH_SHORT).show(); });
                   save.setOnClickListener(view -> {
                       if (item.optBoolean("demo")) {
                           try { SmsStore.complete(this, SmsStore.key(item), null); hidePanel(); updateOverlay(); Toast.makeText(this, tr("Preview complete. No expense was added."), Toast.LENGTH_SHORT).show(); } catch (RuntimeException e) { error.setVisibility(View.VISIBLE); error.setText(tr("Could not finish preview. Try again.")); } return;
@@ -1443,12 +1452,12 @@ jobs:
                   service.remove(node)
           ET.SubElement(service, 'property', {
               a + 'name': 'android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE',
-              a + 'value': 'User-enabled floating expense capture. After a bank payment SMS or an opted-in PhonePe payment alert, a movable overlay lets the user categorise and save that payment over their current app. An ongoing notification exposes a Pause action; the overlay is hidden on the lock screen. No screen content is read.'
+              a + 'value': 'User-enabled floating expense capture. After a bank payment SMS or an opted-in UPI payment alert, a movable overlay lets the user categorise and save that payment over their current app. An ongoing notification exposes a Pause action; the overlay is hidden on the lock screen. No screen content is read.'
           })
           listener = ET.SubElement(app, 'service', {
               a + 'name': '.PhonePeNotificationListener', a + 'exported': 'false',
               a + 'permission': 'android.permission.BIND_NOTIFICATION_LISTENER_SERVICE',
-              a + 'label': 'QuickSpend PhonePe capture'
+              a + 'label': 'QuickSpend payment capture'
           })
           ET.SubElement(ET.SubElement(listener, 'intent-filter'), 'action', {
               a + 'name': 'android.service.notification.NotificationListenerService'
@@ -1668,9 +1677,9 @@ jobs:
               assert any(name.endswith('/raw/qs_capture_appear.mp3') for name in archive.namelist()), 'Missing floater appearance sound'
               dex = [archive.read(n) for n in archive.namelist() if n.startswith('base/dex/') and n.endswith('.dex')]
               assert any(b'quickSpendSystemBack' in data for data in dex), 'Native Back-to-JavaScript handler missing'
-              for cls in (b'Lcom/quickspend/app/SmsBridgePlugin;', b'Lcom/quickspend/app/SmsReceiver;', b'Lcom/quickspend/app/FloatingCaptureService;', b'Lcom/quickspend/app/SmsStore;', b'Lcom/quickspend/app/PaymentParser;', b'Lcom/quickspend/app/PhonePeNotificationListener;', b'Lcom/quickspend/app/PhonePePayment;', b'Lcom/quickspend/app/CaptureCatalog;', b'Lcom/quickspend/app/QuickAccessConfig;', b'Lcom/quickspend/app/QuickAccessPolicy;', b'Lcom/quickspend/app/QuickAccessOverlay;', b'Lcom/quickspend/app/CaptureSound;', b'Lcom/quickspend/app/CaptureSoundPolicy;', b'Lcom/quickspend/app/CaptureRecovery;', b'Lcom/quickspend/app/CaptureRecoveryJob;', b'Lcom/quickspend/app/CaptureWakePolicy;', b'Lcom/quickspend/app/CaptureMotion;', b'Lcom/quickspend/app/QsLanguage;', b'Lcom/quickspend/app/AccountBridgePlugin;', b'Lcom/quickspend/app/UpdateBridgePlugin;', b'Lcom/quickspend/app/UpdateMessagingService;'):
+              for cls in (b'Lcom/quickspend/app/SmsBridgePlugin;', b'Lcom/quickspend/app/SmsReceiver;', b'Lcom/quickspend/app/FloatingCaptureService;', b'Lcom/quickspend/app/SmsStore;', b'Lcom/quickspend/app/PaymentParser;', b'Lcom/quickspend/app/PhonePeNotificationListener;', b'Lcom/quickspend/app/UpiPayment;', b'Lcom/quickspend/app/CaptureCatalog;', b'Lcom/quickspend/app/QuickAccessConfig;', b'Lcom/quickspend/app/QuickAccessPolicy;', b'Lcom/quickspend/app/QuickAccessOverlay;', b'Lcom/quickspend/app/CaptureSound;', b'Lcom/quickspend/app/CaptureSoundPolicy;', b'Lcom/quickspend/app/CaptureRecovery;', b'Lcom/quickspend/app/CaptureRecoveryJob;', b'Lcom/quickspend/app/CaptureWakePolicy;', b'Lcom/quickspend/app/CaptureMotion;', b'Lcom/quickspend/app/QsLanguage;', b'Lcom/quickspend/app/AccountBridgePlugin;', b'Lcom/quickspend/app/UpdateBridgePlugin;', b'Lcom/quickspend/app/UpdateMessagingService;'):
                   assert any(cls in data for data in dex), 'Bundle missing native class: ' + cls.decode()
-              for method in ('quickAccessSettings', 'setQuickAccessSettings', 'overlayStatus', 'openOverlaySettings', 'setOverlayEnabled', 'testOverlay', 'setLanguage', 'phonePeStatus', 'setPhonePeCapture', 'openPhonePeAccess'):
+              for method in ('quickAccessSettings', 'setQuickAccessSettings', 'overlayStatus', 'openOverlaySettings', 'setOverlayEnabled', 'testOverlay', 'setLanguage', 'upiCaptureStatus', 'setUpiCapture', 'openUpiNotificationAccess'):
                   assert any(method.encode() + bytes([0]) in data for data in dex), 'Native floating method missing: ' + method
               assert any(n.endswith('/qs_brand_icon.png') for n in archive.namelist()), 'Native brand icon missing'
               assert 'base/assets/public/locales/hi.json' in archive.namelist(), 'Hindi translations missing'
