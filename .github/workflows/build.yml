@@ -1,7 +1,7 @@
 name: Quick Spend Play Console Bundle
 on:
   push:
-    branches: [main]
+    branches: [main, codex/build-phonepe-4963f1e]
   workflow_dispatch:
     inputs:
       version_code:
