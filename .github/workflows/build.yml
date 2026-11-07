@@ -1,7 +1,7 @@
 name: Quick Spend Play Console Bundle
 on:
   push:
-    branches: [main]
+    branches: [main, codex/build-pr22-422e2c5]
   workflow_dispatch:
     inputs:
       version_code:
