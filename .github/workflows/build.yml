@@ -1,7 +1,7 @@
 name: Quick Spend Play Console Bundle
 on:
   push:
-    branches: [main]
+    branches: [main, codex/build-upi-floater-fc89fc3]
   workflow_dispatch:
     inputs:
       version_code:
