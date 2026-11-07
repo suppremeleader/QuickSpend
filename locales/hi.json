@@ -631,5 +631,11 @@
   "Choose four": "चार चुनें",
   "Your 10-tag rail": "आपकी 10 श्रेणियाँ",
   "Tag": "श्रेणी",
-  "Pinned categories appear first. Remaining spaces use your ranked categories, up to ten unique tags.": "पसंदीदा श्रेणियाँ पहले आती हैं। बाकी जगह खर्च के क्रम वाली श्रेणियाँ आती हैं, कुल अधिकतम दस अलग श्रेणियाँ।"
+  "Pinned categories appear first. Remaining spaces use your ranked categories, up to ten unique tags.": "पसंदीदा श्रेणियाँ पहले आती हैं। बाकी जगह खर्च के क्रम वाली श्रेणियाँ आती हैं, कुल अधिकतम दस अलग श्रेणियाँ।",
+  "Release to select": "चुनने के लिए छोड़ें",
+  "Hold the payment bubble to see these tags in this order.": "इन श्रेणियों को इसी क्रम में देखने के लिए भुगतान बबल दबाकर रखें।",
+  "Hold, slide and release": "दबाएँ, सरकाएँ और छोड़ें",
+  "EMI paid": "चुकाई गई किस्तें",
+  "paid": "चुकाया",
+  "remaining": "बाकी"
 }
