@@ -16,6 +16,12 @@ const {chromium}=require(process.env.PLAYWRIGHT_MODULE||'playwright'),assert=req
  await page.locator('[data-t="home"]').click();assert.equal(await page.locator('#s-home').evaluate(el=>el.scrollTop),0);
  await page.locator('#s-home button').filter({hasText:'See all'}).click();await page.locator('#history-search').fill('Weekend lunch');assert.equal(await page.locator('#history-results .history-row').count(),1);assert.equal(await page.locator('#history-search').inputValue(),'Weekend lunch');assert.equal(await page.locator('#tabs').isVisible(),false);
  await page.getByRole('button',{name:'Clear filters',exact:true}).click();assert.equal(await page.locator('#history-results .history-row').count(),12);await page.locator('#history-type').selectOption('Income');assert.equal(await page.locator('#history-results .history-row').count(),4);await page.getByRole('button',{name:'Clear filters',exact:true}).click();await page.screenshot({animations:'disabled',path:'ui-smoke-output/history-dark.png'});
+ await page.setViewportSize({width:320,height:720});
+ assert.equal(await page.locator('.history-filters').evaluate(el=>el.scrollWidth>el.clientWidth+1),false,'History filters fit without horizontal scrolling');
+ const narrowFilters=await page.locator('.history-filters select').evaluateAll(nodes=>nodes.map(el=>el.getBoundingClientRect().top));
+ assert.ok(narrowFilters.some(top=>top>narrowFilters[0]),'Filters wrap on small screens');
+ await page.screenshot({animations:'disabled',path:'ui-smoke-output/history-narrow.png'});
+ await page.setViewportSize({width:390,height:844});
  await page.evaluate(async()=>{await setColorMode('light');closeSheet()});await page.screenshot({animations:'disabled',path:'ui-smoke-output/history-light.png'});
  await page.getByRole('button',{name:'Back',exact:true}).click();await page.locator('#s-home.on').waitFor();
  await page.locator('#s-home button').filter({hasText:'See all'}).click();await page.locator('#history-results .history-row').first().click();await page.locator('#sheet.on').waitFor();
@@ -77,8 +83,13 @@ const {chromium}=require(process.env.PLAYWRIGHT_MODULE||'playwright'),assert=req
   await page.screenshot({animations:'disabled',path:'ui-smoke-output/quick-settings-'+mode+'.png'});
  }
  assert.equal(await page.locator('#ph').evaluate(el=>getComputedStyle(el).backgroundColor),'rgb(237, 237, 237)');
- await page.setViewportSize({width:320,height:720});await page.evaluate(()=>{language='hi';paintQuickAccessSettings()});assert.equal(await page.locator('#sheet').evaluate(el=>el.scrollWidth>el.clientWidth+1),false);assert.equal(await page.getByText('आपकी 10 श्रेणियाँ',{exact:true}).count(),1);await page.locator('.quick-rail-preview').scrollIntoViewIfNeeded();await page.screenshot({animations:'disabled',path:'ui-smoke-output/quick-settings-hindi.png'});await page.evaluate(()=>{language='en';closeSheet(false)});await page.setViewportSize({width:390,height:844});
- await page.evaluate(()=>{openData()});assert.equal(await page.locator('#sheet .grab').evaluate(el=>getComputedStyle(el).backgroundColor),'rgba(0, 0, 0, 0)');await page.screenshot({animations:'disabled',path:'ui-smoke-output/settings-light.png'});
+ await page.setViewportSize({width:320,height:720});await page.evaluate(()=>{language='hi';paintQuickAccessSettings()});assert.equal(await page.locator('#sheet').evaluate(el=>el.scrollWidth>el.clientWidth+1),false);assert.equal(await page.getByText('आपकी 10 श्रेणियाँ',{exact:true}).count(),1);await page.locator('.quick-rail-preview').scrollIntoViewIfNeeded();await page.screenshot({animations:'disabled',path:'ui-smoke-output/quick-settings-hindi.png'});await page.evaluate(()=>{language='en';document.querySelector('#sheet').scrollTop=9999});
+ assert.ok(await page.locator('#sheet').evaluate(el=>el.scrollTop)>0,'Quick Access sheet is scrolled before returning');
+ assert.ok(await page.locator('#sheet .grab').evaluate(el=>el.getBoundingClientRect().bottom<el.parentElement.getBoundingClientRect().top),'Grab handle scrolls away from content');
+ await page.locator('#sheet .sheet-heading .icon-btn').evaluate(el=>el.click());
+ assert.equal(await page.locator('#sheet').evaluate(el=>el.scrollTop),0,'Settings opens at its heading after a scrolled sheet');
+ assert.equal(await page.locator('#sheet h2').innerText(),'Settings');await page.setViewportSize({width:390,height:844});
+ assert.equal(await page.locator('#sheet .grab').evaluate(el=>getComputedStyle(el).backgroundColor),'rgba(0, 0, 0, 0)');await page.screenshot({animations:'disabled',path:'ui-smoke-output/settings-light.png'});
  await page.evaluate(()=>{closeSheet(false);recur=[{t:'Expense',m:'Example plan',a:200,months:5,total:1000,left:1,last:new Date().getFullYear()*12+new Date().getMonth(),day:1,emi:true}];selectHomePage('emi')});
  assert.equal(await page.locator('.emi-progress-total strong').innerText(),'₹800');assert.equal(await page.locator('.emi-progress-total span').innerText(),'/ ₹1,000');assert.equal(await page.getByRole('progressbar',{name:'EMI paid'}).getAttribute('aria-valuenow'),'80');await page.screenshot({animations:'disabled',path:'ui-smoke-output/emi-progress-light.png'});
  await page.evaluate(()=>{ob=0;showOb()});assert.equal(await page.locator('#onb img').count(),0);await page.screenshot({animations:'disabled',path:'ui-smoke-output/setup.png'});
