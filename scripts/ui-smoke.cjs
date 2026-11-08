@@ -103,13 +103,16 @@ const {chromium}=require(process.env.PLAYWRIGHT_MODULE||'playwright'),assert=req
  const x=bubbleBox.x+bubbleBox.width/2,y=bubbleBox.y+bubbleBox.height/2;
  await page.mouse.move(x,y);await page.mouse.down();await page.locator('#quick-live').waitFor();
  await page.mouse.move(x-66,y,{steps:4});
+ await page.locator('#quick-live .is-selected').waitFor({timeout:3000}).catch(async error=>{
+  console.log('Quick Access gesture state',await page.evaluate(()=>({selected:inAppQuickGesture?.selected,origin:inAppQuickGesture?.origin,held:!!inAppQuickGesture?.categories,cancelled:inAppQuickGesture?.cancelled})));throw error
+ });
  assert.equal(await page.locator('#quick-live .is-selected').count(),1,'A level sideways gesture highlights a category');
  await page.mouse.move(phoneBox.x+phoneBox.width/2,phoneBox.y+phoneBox.height-25,{steps:4});
  await page.locator('#quick-live .quick-live-hint.is-active').waitFor();await page.mouse.up();
  assert.equal(await page.locator('#sheet.on').count(),0,'Cancel does not open or save a payment');
  await page.mouse.move(x,y);await page.mouse.down();await page.locator('#quick-live').waitFor();
  await page.mouse.move(x-66,y,{steps:4});await page.mouse.up();
- assert.equal(await page.locator('#sheet .entry-delete').count(),1,'Quick entry exposes Delete');
+ await page.locator('#sheet.on .entry-delete').waitFor();
  await page.getByRole('button',{name:'Delete',exact:true}).click();
  await page.waitForFunction(()=>!pending.some(p=>p.id===501));
  await page.evaluate(()=>{pending.push({id:502,m:'Swipe review test',a:234.67,kind:'Expense',ts:Date.now()});render()});
@@ -120,7 +123,7 @@ const {chromium}=require(process.env.PLAYWRIGHT_MODULE||'playwright'),assert=req
  for(const sign of [-1,1]){
   await page.mouse.move(cx,cy);await page.mouse.down();
   await page.mouse.move(cx+sign*85,cy,{steps:5});await page.mouse.up();
-  assert.equal(await review.getAttribute('data-side'),sign>0?'left':'right');
+  await page.locator('.review-swipe[data-open][data-side='+ (sign>0?'left':'right') +']').waitFor();
   assert.equal(await page.locator('#sheet.on').count(),0,'Swiping does not open the payment')
  }
  await page.getByRole('button',{name:'Dismiss payment'}).click();
