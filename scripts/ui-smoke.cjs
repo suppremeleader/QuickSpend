@@ -92,6 +92,44 @@ const {chromium}=require(process.env.PLAYWRIGHT_MODULE||'playwright'),assert=req
  assert.equal(await page.locator('#sheet .grab').evaluate(el=>getComputedStyle(el).backgroundColor),'rgba(0, 0, 0, 0)');await page.screenshot({animations:'disabled',path:'ui-smoke-output/settings-light.png'});
  await page.evaluate(()=>{closeSheet(false);recur=[{t:'Expense',m:'Example plan',a:200,months:5,total:1000,left:1,last:new Date().getFullYear()*12+new Date().getMonth(),day:1,emi:true}];selectHomePage('emi')});
  assert.equal(await page.locator('.emi-progress-total strong').innerText(),'₹800');assert.equal(await page.locator('.emi-progress-total span').innerText(),'/ ₹1,000');assert.equal(await page.getByRole('progressbar',{name:'EMI paid'}).getAttribute('aria-valuenow'),'80');await page.screenshot({animations:'disabled',path:'ui-smoke-output/emi-progress-light.png'});
+ console.log('CHECK: Quick Access sideways selection and cancellation, Review swipe, and quick entry delete');
+ await page.evaluate(()=>{
+  homePage='overview';render();
+  const payment={id:501,m:'Swipe test',a:123.67,kind:'Expense',ts:Date.now()};
+  pending.push(payment);showPaymentBubble(payment,true)
+ });
+ const bubble=page.locator('#bub');
+ const bubbleBox=await bubble.boundingBox(), phoneBox=await page.locator('#ph').boundingBox();
+ const x=bubbleBox.x+bubbleBox.width/2,y=bubbleBox.y+bubbleBox.height/2;
+ await page.mouse.move(x,y);await page.mouse.down();await page.locator('#quick-live').waitFor();
+ await page.mouse.move(x-66,y,{steps:4});
+ await page.locator('#quick-live .is-selected').waitFor({timeout:3000}).catch(async error=>{
+  console.log('Quick Access gesture state',await page.evaluate(()=>({selected:inAppQuickGesture?.selected,origin:inAppQuickGesture?.origin,held:!!inAppQuickGesture?.categories,cancelled:inAppQuickGesture?.cancelled})));throw error
+ });
+ assert.equal(await page.locator('#quick-live .is-selected').count(),1,'A level sideways gesture highlights a category');
+ await page.mouse.move(phoneBox.x+phoneBox.width/2,phoneBox.y+phoneBox.height-25,{steps:4});
+ await page.locator('#quick-live .quick-live-hint.is-active').waitFor();await page.mouse.up();
+ assert.equal(await page.locator('#sheet.on').count(),0,'Cancel does not open or save a payment');
+ await page.mouse.move(x,y);await page.mouse.down();await page.locator('#quick-live').waitFor();
+ await page.mouse.move(x-66,y,{steps:4});await page.mouse.up();
+ await page.locator('#sheet.on .entry-delete').waitFor();
+ await page.getByRole('button',{name:'Delete',exact:true}).click();
+ await page.waitForFunction(()=>!pending.some(p=>p.id===501));
+ await page.evaluate(()=>{pending.push({id:502,m:'Swipe review test',a:234.67,kind:'Expense',ts:Date.now()});render()});
+ await page.locator('[data-t="review"]').click();
+ const review=page.locator('.review-swipe').first();
+ await review.scrollIntoViewIfNeeded();
+ const reviewBox=await review.boundingBox(),cx=reviewBox.x+reviewBox.width/2,cy=reviewBox.y+reviewBox.height/2;
+ for(const sign of [-1,1]){
+  await page.mouse.move(cx,cy);await page.mouse.down();
+  await page.mouse.move(cx+sign*85,cy,{steps:5});await page.mouse.up();
+  await page.locator('.review-swipe[data-open][data-side='+ (sign>0?'left':'right') +']').waitFor();
+  assert.equal(await page.locator('#sheet.on').count(),0,'Swiping does not open the payment')
+ }
+ await page.getByRole('button',{name:'Dismiss payment'}).click();
+ await page.waitForFunction(()=>!pending.some(p=>p.id===502));
+ assert.equal(await page.evaluate(()=>tx.some(t=>t.a===123.67||t.a===234.67)),false,'Deleted pending payments never enter the ledger');
+ await page.locator('[data-t="home"]').click();
  await page.evaluate(()=>{ob=0;showOb()});assert.equal(await page.locator('#onb img').count(),0);await page.screenshot({animations:'disabled',path:'ui-smoke-output/setup.png'});
  const overflow=await page.locator('#onb').evaluate(el=>el.scrollWidth>el.clientWidth+1);assert.equal(overflow,false,'Setup must fit phone width');assert.deepEqual(errors,[]);
  console.log('PASS: Chromium history search/filter/edit routes, navigation scroll reset, text-only setup, Insights cleanup, dark/light screenshots real photo compression/save/removal and recording-control absence and no runtime errors');

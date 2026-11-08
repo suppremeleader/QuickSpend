@@ -11,15 +11,14 @@ import android.view.View;
 public final class QuickAccessOverlay extends View {
     private final Paint p=new Paint(Paint.ANTI_ALIAS_FLAG);
     private final String[] labels;
-    private final String amount,type,hint,release;
+    private final String amount,type,cancel;
     private final boolean light;
     private boolean dismissMode;
     public boolean targetActive;
     public int selected=-1;
-    public boolean dragging;
     public float bubbleX,bubbleY;
     private float d(float n){return n*getResources().getDisplayMetrics().density;}
-    public QuickAccessOverlay(Context c,String[] labels,String amount,String type,boolean light){super(c);this.labels=labels;this.amount=amount;this.type=type;this.light=light;hint=QsLanguage.tr(c,"Slide up or down to choose");release=QsLanguage.tr(c,"Release to save");setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_NO);}
+    public QuickAccessOverlay(Context c,String[] labels,String amount,String type,boolean light){super(c);this.labels=labels;this.amount=amount;this.type=type;this.light=light;cancel="×  "+QsLanguage.tr(c,"Cancel");setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_NO);}
     public QuickAccessOverlay(Context c,boolean light){this(c,new String[0],"","",light);dismissMode=true;}
     private void pill(Canvas c,String value,float x,float y,float maxWidth,int color,boolean active){
         p.setShader(null);p.setTypeface(Typeface.create("sans-serif-medium",Typeface.NORMAL));p.setTextSize(d(14));
@@ -29,7 +28,13 @@ public final class QuickAccessOverlay extends View {
         p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(d(active?2:1));p.setColor(color);c.drawRoundRect(x-w/2,y-h/2,x+w/2,y+h/2,d(22),d(22),p);p.setStyle(Paint.Style.FILL);
         p.setColor(active?(light?Color.WHITE:0xff101714):(light?0xff181818:Color.WHITE));c.drawText(text,x-p.measureText(text)/2,y-(p.ascent()+p.descent())/2,p);
     }
-    public int targetForSlide(float dy){if(getHeight()<=0||getWidth()<=0)return -1;float density=getResources().getDisplayMetrics().density;return QuickAccessPolicy.carouselTarget(dy,labels.length,QuickAccessPolicy.carouselStep(getHeight(),density,labels.length),QuickAccessPolicy.carouselOrigin(labels.length,getHeight(),bubbleY+d(30),density));}
+    public int targetForSlide(float dx,float dy,float x,float y){
+        float density=getResources().getDisplayMetrics().density;
+        targetActive=QuickAccessPolicy.cancelTarget(x,y,getWidth(),getHeight(),density)&&Math.hypot(dx,dy)>=d(18);
+        if(getHeight()<=0||getWidth()<=0)return -1;
+        int origin=QuickAccessPolicy.visibleOrigin(labels.length,getHeight(),bubbleY+d(30),density);
+        return QuickAccessPolicy.slideTarget(dx,dy,labels.length,QuickAccessPolicy.carouselStep(getHeight(),density,labels.length),origin,d(18),targetActive);
+    }
     public float[] categoryPosition(int index){
         float density=getResources().getDisplayMetrics().density,w=getWidth();
         float[] rail=QuickAccessPolicy.carouselRail(labels.length,selected,getHeight(),bubbleY+d(30),density);
@@ -42,7 +47,8 @@ public final class QuickAccessOverlay extends View {
     private void categoryPill(Canvas c,String category,float x,float y,float width,boolean active){
         float h=d(44);p.setShader(null);p.setStyle(Paint.Style.FILL);p.setColor(active?(light?0xff191919:0xffc9f36b):(light?0xfff8f8f8:0xff20252b));c.drawRoundRect(x-width/2,y-h/2,x+width/2,y+h/2,d(22),d(22),p);
         p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(d(active?2:1));p.setColor(active?(light?0xff191919:0xffc9f36b):(light?0xffdedede:0xff3b4249));c.drawRoundRect(x-width/2,y-h/2,x+width/2,y+h/2,d(22),d(22),p);p.setStyle(Paint.Style.FILL);
-        CategorySymbols.draw(getContext(),c,category,x-width/2+d(9),y-d(13),d(26));
+        float icon=d(active?30:26);
+        CategorySymbols.draw(getContext(),c,category,x-width/2+d(22)-icon/2,y-icon/2,icon);
         p.setTypeface(Typeface.create("sans-serif-medium",Typeface.NORMAL));p.setTextSize(d(13));p.setColor(active?(light?Color.WHITE:0xff181818):(light?0xff181818:Color.WHITE));
         String label=TextUtils.ellipsize(QsLanguage.tr(getContext(),category),new android.text.TextPaint(p),Math.max(d(8),width-d(52)),TextUtils.TruncateAt.END).toString();
         c.drawText(label,x-width/2+d(43),y-(p.ascent()+p.descent())/2,p);
@@ -84,9 +90,9 @@ public final class QuickAccessOverlay extends View {
                 float[] point=categoryPosition(i);
                 categoryPill(c,labels[i],point[0],point[1],width,selected==i);
             }
-            pill(c,selected>=0?release:hint,w/2,h-d(30),w-d(24),0xffc9f36b,false);
+            pill(c,cancel,w/2,h-d(34),Math.min(w-d(24),d(120)),light?0xffb52d44:0xffffb8c4,targetActive);
         }
-        pill(c,amount,w/2,d(28),Math.min(w-d(24),d(290)),light?0xff191919:"Income".equals(type)?0xffc9f36b:0xff68b8ff,true);
+        pill(c,amount,bubbleX+d(30),bubbleY<d(72)?bubbleY+d(89):bubbleY-d(29),Math.min(w-d(24),d(142)),light?0xff191919:"Income".equals(type)?0xffc9f36b:0xff68b8ff,true);
 
     }
 }

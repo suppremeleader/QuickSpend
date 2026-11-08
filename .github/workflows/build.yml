@@ -713,7 +713,7 @@ jobs:
               public static JSONObject snapshot(Context c) {
                   synchronized (LOCK) {
                       SharedPreferences p = prefs(c);
-                      try { return new JSONObject().put("items", inbox(p)).put("entries", array(p, SAVED)).put("customCategories", CaptureCatalog.custom(c)); }
+                      try { return new JSONObject().put("items", inbox(p)).put("entries", array(p, SAVED)).put("handled", array(p, HANDLED)).put("customCategories", CaptureCatalog.custom(c)); }
                       catch (JSONException e) { throw new IllegalStateException(e); }
                   }
               }
@@ -1112,12 +1112,12 @@ jobs:
                                   if (tether != null) { tether.endX=bubbleParams.x+dp(30); tether.endY=bubbleParams.y+dp(30); tether.invalidate(); }
                                   try { windows.updateViewLayout(view, bubbleParams); } catch (RuntimeException ignored) { }
                               }
-                              if(quickGesture) updateQuickAccess(dragX,dragY,moved);else if(moved)updateDismissTarget();
+                              if(quickGesture) updateQuickAccess(dragX,dragY,event.getRawX(),event.getRawY());else if(moved)updateDismissTarget();
                               return true;
                           }
                           if (event.getActionMasked() == MotionEvent.ACTION_UP) {
                               touching=false;main.removeCallbacks(hold);
-                              if(quickGesture){finishQuickAccess(dragX,dragY,event.getEventTime()-downTime,distance,oldX,oldY);return true;}
+                              if(quickGesture){finishQuickAccess(event.getRawX()-downX,event.getRawY()-downY,event.getRawX(),event.getRawY(),event.getEventTime()-downTime,oldX,oldY);return true;}
                               hideTether(); view.setScaleX(1); view.setScaleY(1);
                               boolean dismiss=moved&&updateDismissTarget();hideDismissTarget();
                               if(dismiss){hideUntilNextPayment();hideAll();Toast.makeText(FloatingCaptureService.this,tr("Shortcut hidden. Payments stay in Review."),Toast.LENGTH_SHORT).show();}
@@ -1152,29 +1152,30 @@ jobs:
                   try {
                       quickItem=new JSONObject(q.get(0).toString());quickPayment=PaymentParser.parse(quickItem);
                       quickCategories=QuickAccessConfig.carousel(this,quickPayment.type);
-                      String amount=("Income".equals(quickPayment.type)?"+₹":"−₹")+quickPayment.amountText()+" · "+tr(quickPayment.type);
+                      String amount=("Income".equals(quickPayment.type)?"+₹":"−₹")+quickPayment.amountText();
                       int[] anchor=new int[2];bubble.getLocationOnScreen(anchor);quickAnchorX=anchor[0]+dp(30);quickAnchorY=anchor[1]+dp(30);
                       quickLayer=new QuickAccessOverlay(this,quickCategories,amount,quickPayment.type,lightMode);
                       WindowManager.LayoutParams lp=new WindowManager.LayoutParams(-1,-1,windowType(),WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE|WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE,PixelFormat.TRANSLUCENT);
                       lp.gravity=Gravity.TOP|Gravity.START;lp.alpha=.75f;windows.addView(quickLayer,lp);
                       if(motionEnabled()){quickLayer.setAlpha(0);quickLayer.animate().alpha(1).setDuration(140).start();}
-                      quickLayer.post(()->{if(quickLayer!=null)updateQuickAccess(0,0,false);});
+                      QuickAccessOverlay layer=quickLayer;
+                      layer.post(()->{if(quickLayer==layer&&layer.selected<0&&!layer.targetActive)updateQuickAccess(0,0,quickAnchorX,quickAnchorY);});
                       bubble.performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS);return true;
                   } catch(Exception e){hideQuickAccess();return false;}
               }
-              private void updateQuickAccess(float dx,float dy,boolean dragging) {
+              private void updateQuickAccess(float dx,float dy,float rawX,float rawY) {
                   if(quickLayer==null||bubble==null)return;
                   int[] origin=new int[2],icon=new int[2];quickLayer.getLocationOnScreen(origin);bubble.getLocationOnScreen(icon);
-                  quickLayer.bubbleX=icon[0]-origin[0];quickLayer.bubbleY=icon[1]-origin[1];quickLayer.dragging=dragging;
-                  int target=dragging&&Math.abs(dy)>=dp(18)?quickLayer.targetForSlide(dy):-1;
+                  quickLayer.bubbleX=icon[0]-origin[0];quickLayer.bubbleY=icon[1]-origin[1];
+                  int target=quickLayer.targetForSlide(dx,dy,rawX-origin[0],rawY-origin[1]);
                   if(target!=quickLayer.selected&&target>=0)bubble.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP);
                   quickLayer.selected=target;quickLayer.invalidate();
               }
               private void hideQuickAccess(){if(quickLayer!=null){try{windows.removeView(quickLayer);}catch(RuntimeException ignored){}quickLayer=null;}quickItem=null;quickPayment=null;quickCategories=null;}
-              private void finishQuickAccess(float dx,float dy,long held,float travel,int oldX,int oldY) {
-                  hideTether();updateQuickAccess(dx,dy,true);
+              private void finishQuickAccess(float dx,float dy,float rawX,float rawY,long held,int oldX,int oldY) {
+                  hideTether();updateQuickAccess(dx,dy,rawX,rawY);
                   int slot=quickLayer==null?-1:quickLayer.selected;
-                  if(quickPayment==null||quickCategories==null||SmsStore.requiresReview(this,quickItem)||slot>=quickCategories.length||!QuickAccessPolicy.canSave(QuickAccessConfig.enabled(this),held,Math.abs(dy),dp(18),slot,quickPayment.amount,screenLocked()||appVisible,false)) {hideQuickAccess();animateBubble(oldX,oldY,false);return;}
+                  if(slot<0||quickPayment==null||quickCategories==null||SmsStore.requiresReview(this,quickItem)||slot>=quickCategories.length||!QuickAccessPolicy.canSave(QuickAccessConfig.enabled(this),held,(float)Math.hypot(dx,dy),dp(18),slot,quickPayment.amount,screenLocked()||appVisible,quickLayer.targetActive)) {hideQuickAccess();animateBubble(oldX,oldY,false);return;}
                   try {
                       JSONObject item=quickItem;PaymentParser payment=quickPayment;String category=quickCategories[slot];
                       JSONObject entry=new JSONObject().put("t",payment.type).put("a",payment.amount).put("note","").put("c",category).put("m",payment.merchant).put("who","").put("ts",item.optLong("ts",System.currentTimeMillis())).put("settled",0).put("smsFrom",item.optString("from")).put("smsBody",item.optString("body"));
@@ -1332,8 +1333,21 @@ jobs:
                   planningPickers.setVisibility("Expense".equals(type[0])?View.VISIBLE:View.GONE);
                   LinearLayout footer = new LinearLayout(this); footer.setOrientation(LinearLayout.VERTICAL); footer.setPadding(dp(20),dp(8),dp(20),dp(20)); footer.setBackground(shape(BG,0)); frame.addView(footer,new LinearLayout.LayoutParams(-1,-2));
                   TextView error = text(tr(""), 12, lightMode?Color.rgb(181,45,68):Color.rgb(255,128,128)); error.setVisibility(View.GONE); append(footer, error, 0);
-                  LinearLayout actions = row(); Button later = button("Later", false), save = button(item.optBoolean("demo") ? "Finish test" : "Save payment  ✓", true);
-                  LinearLayout.LayoutParams actionLp = new LinearLayout.LayoutParams(0, dp(48), 1); actionLp.setMargins(dp(3), dp(6), dp(3), 0); actions.addView(later, actionLp); actions.addView(save, new LinearLayout.LayoutParams(actionLp)); append(footer, actions, 0);
+                  LinearLayout actions = row();
+                  Button delete = button("Delete", false), later = button("Later", false), save = button(item.optBoolean("demo") ? "Finish test" : "Save", true);
+                  int danger = lightMode?0xffa5263a:0xffffaab9;
+                  delete.setTextColor(danger);
+                  GradientDrawable deleteBg=shape(lightMode?0xfffaecee:0xff332228,26);
+                  deleteBg.setStroke(dp(1),lightMode?0xffecc1c8:0xff61363e);
+                  delete.setBackground(new RippleDrawable(ColorStateList.valueOf(0x28ffffff),deleteBg,null));
+                  android.graphics.drawable.Drawable trash = getDrawable(android.R.drawable.ic_menu_delete).mutate();
+                  trash.setTint(danger); trash.setBounds(0,0,dp(16),dp(16));
+                  delete.setCompoundDrawables(trash,null,null,null); delete.setCompoundDrawablePadding(dp(3));
+                  LinearLayout.LayoutParams actionLp = new LinearLayout.LayoutParams(0, dp(48), 1); actionLp.setMargins(dp(3), dp(6), dp(3), 0);
+                  actions.addView(delete, new LinearLayout.LayoutParams(actionLp));
+                  actions.addView(later, new LinearLayout.LayoutParams(actionLp));
+                  LinearLayout.LayoutParams saveLp = new LinearLayout.LayoutParams(actionLp); saveLp.weight=1.35f;
+                  actions.addView(save, saveLp); append(footer, actions, 0);
                   WindowManager.LayoutParams lp = new WindowManager.LayoutParams(Math.min(dp(380), display().widthPixels - dp(24)), Math.min(dp(640), display().heightPixels - dp(80)), windowType(), WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL | WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH, PixelFormat.TRANSLUCENT);
                   lp.gravity = Gravity.CENTER; lp.softInputMode = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE;
                   frame.setOnTouchListener((view, event) -> { if (event.getAction() == MotionEvent.ACTION_OUTSIDE) { collapsePanel(); return true; } return false; });
@@ -1357,6 +1371,15 @@ jobs:
                   });
                   close.setOnClickListener(view -> collapsePanel());
                   pencil.setOnClickListener(view -> { amountLabel.setVisibility(View.GONE); amount.setVisibility(View.VISIBLE); amount.requestFocus(); amount.post(() -> ((InputMethodManager) getSystemService(INPUT_METHOD_SERVICE)).showSoftInput(amount, InputMethodManager.SHOW_IMPLICIT)); });
+                  delete.setOnClickListener(view -> {
+                      delete.setEnabled(false);
+                      try {
+                          SmsStore.complete(this,SmsStore.key(item),null);
+                          hidePanel(); updateOverlay();
+                      } catch (RuntimeException e) {
+                          delete.setEnabled(true); error.setVisibility(View.VISIBLE); error.setText(tr("Could not dismiss this payment. Try again."));
+                      }
+                  });
                   later.setOnClickListener(view -> { if (item.optBoolean("demo")) { try { SmsStore.complete(this, SmsStore.key(item), null); } catch (RuntimeException e) { error.setVisibility(View.VISIBLE); error.setText(tr("Could not dismiss preview. Try again.")); return; } } else deferredPayments.add(SmsStore.key(item)); hidePanel(); updateOverlay(); Toast.makeText(this, tr(item.optBoolean("demo") ? "Preview complete. No expense was added." : "Saved for later in Review"), Toast.LENGTH_SHORT).show(); });
                   save.setOnClickListener(view -> {
                       if (item.optBoolean("demo")) {

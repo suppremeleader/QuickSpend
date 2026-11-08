@@ -40,6 +40,19 @@ public final class QuickAccessPolicy {
     public static boolean dismissTarget(float x,float y,float width,float height,float density){
         return density>0&&width>0&&height>0&&Float.isFinite(x)&&Float.isFinite(y)&&Math.hypot(x-width/2,y-(height-96*density))<=56*density;
     }
+    public static int visibleOrigin(int count,float height,float anchorY,float density){
+        float[] rail=carouselRail(count,-1,height,anchorY,density);
+        if(rail[1]<1)return -1;
+        int offset=Math.round((anchorY-rail[3])/rail[2]);
+        return (int)rail[0]+Math.max(0,Math.min((int)rail[1]-1,offset));
+    }
+    public static int slideTarget(float dx,float dy,int count,float step,int origin,float minTravel,boolean cancelled){
+        if(cancelled||!Float.isFinite(minTravel)||minTravel<=0||!Float.isFinite(dx)||!Float.isFinite(dy)||Math.hypot(dx,dy)<minTravel)return -1;
+        return carouselTarget(Math.abs(dy)<minTravel?0:dy,count,step,origin);
+    }
+    public static boolean cancelTarget(float x,float y,float width,float height,float density){
+        return width>0&&height>0&&density>0&&Math.abs(x-width/2)<=60*density&&Math.abs(y-(height-34*density))<=24*density;
+    }
     public static boolean canSave(boolean enabled,long held,float travel,float minTravel,int slot,double amount,boolean locked,boolean cancelled){
         return enabled&&held>=HOLD_MS&&Float.isFinite(travel)&&Float.isFinite(minTravel)&&minTravel>0&&travel>=minTravel&&slot>=0&&slot<10&&Double.isFinite(amount)&&amount>0&&!locked&&!cancelled;
     }
