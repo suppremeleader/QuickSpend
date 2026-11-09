@@ -41,6 +41,7 @@ jobs:
         run: |
           node tests/capture-regression.cjs
           node tests/app-inbox.cjs
+          node tests/ledger-reliability.cjs
           node tests/language.cjs
           node tests/budgets.cjs
           node tests/account-layout.cjs
@@ -364,7 +365,13 @@ jobs:
 
             @PluginMethod
             public void syncCaptureCatalog(PluginCall call) {
-              try { JSObject result=new JSObject(); result.put("customCategories",CaptureCatalog.sync(getContext(),new org.json.JSONObject(call.getString("payload","{}"))).toString()); call.resolve(result); }
+              try {
+                org.json.JSONObject config=new org.json.JSONObject(call.getString("payload","{}"));
+                JSObject result=new JSObject();
+                result.put("customCategories",CaptureCatalog.sync(getContext(),config).toString());
+                result.put("bankAccounts",SmsStore.mergeBankAccounts(getContext(),config.optJSONObject("bankAccounts")).toString());
+                call.resolve(result);
+              }
               catch(Exception e){call.reject("Could not sync categories",e);}
             }
 
@@ -743,12 +750,33 @@ jobs:
               public static JSONObject snapshot(Context c) {
                   synchronized (LOCK) {
                       SharedPreferences p = prefs(c);
-                      try { return new JSONObject().put("items", inbox(p)).put("entries", array(p, SAVED)).put("handled", array(p, HANDLED)).put("customCategories", CaptureCatalog.custom(c)); }
+                      try { return new JSONObject().put("items", inbox(p)).put("entries", array(p, SAVED)).put("handled", array(p, HANDLED)).put("bankAccounts",bankAccounts(p)).put("customCategories", CaptureCatalog.custom(c)); }
                       catch (JSONException e) { throw new IllegalStateException(e); }
                   }
               }
               public static JSONArray pending(Context c) {
                   synchronized (LOCK) { return inbox(prefs(c)); }
+              }
+              private static final String BANK_ACCOUNTS="bank_accounts";
+              static boolean bankKeyValid(String key){return key.matches("[a-z][a-z0-9 -]{0,32}(?::[0-9]{3,4})?");}
+              private static JSONObject bankAccounts(SharedPreferences p){
+                  try{return new JSONObject(p.getString(BANK_ACCOUNTS,"{}"));}catch(JSONException e){return new JSONObject();}
+              }
+              static JSONObject mergeBankAccounts(Context c,JSONObject incoming) throws JSONException{
+                  synchronized(LOCK){
+                      SharedPreferences p=prefs(c);JSONObject accounts=bankAccounts(p);
+                      if(incoming==null||incoming.length()>500)return accounts;
+                      boolean changed=false;
+                      for(java.util.Iterator<String> it=incoming.keys();it.hasNext();){
+                          String key=it.next();JSONObject row=incoming.optJSONObject(key),before=accounts.optJSONObject(key);
+                          if(!bankKeyValid(key)||row==null)continue;
+                          long stamp=row.optLong("updatedAt",0);String name=row.optString("account","");
+                          if(name.isEmpty()||name.length()>60||stamp<=0||before!=null&&stamp<=before.optLong("updatedAt"))continue;
+                          accounts.put(key,new JSONObject().put("account",name).put("updatedAt",stamp));changed=true;
+                      }
+                      if(changed)persist(p.edit().putString(BANK_ACCOUNTS,accounts.toString()));
+                      return accounts;
+                  }
               }
               /** Save atomically before removing the source SMS; the first completion wins. */
               public static boolean complete(Context c, String sourceKey, JSONObject entry) {
@@ -764,14 +792,22 @@ jobs:
                       }
                       if (item == null) return false;
                       try {
+                          SharedPreferences.Editor edit=p.edit();
                           if (entry != null && !item.optBoolean("demo")) {
                               entry.put("sourceKey", sourceKey).put("nativeKey", sourceKey);
                               saved.put(entry);
+                              String bankKey=entry.optString("bankKey"),name=entry.optString("acc");
+                              if(bankKeyValid(bankKey)&&!name.isEmpty()&&name.length()<=60){
+                                  JSONObject accounts=bankAccounts(p),before=accounts.optJSONObject(bankKey);
+                                  long stamp=Math.max(System.currentTimeMillis(),before==null?0:before.optLong("updatedAt")+1);
+                                  accounts.put(bankKey,new JSONObject().put("account",name).put("updatedAt",stamp));
+                                  edit.putString(BANK_ACCOUNTS,accounts.toString());
+                              }
                           }
                           handled.put(sourceKey);
                           JSONArray recent = new JSONArray();
                           for (int i = Math.max(0, handled.length() - 2000); i < handled.length(); i++) recent.put(handled.get(i));
-                          persist(p.edit().putString("queue", keep.toString()).putString(SAVED, saved.toString()).putString(HANDLED, recent.toString()));
+                          persist(edit.putString("queue", keep.toString()).putString(SAVED, saved.toString()).putString(HANDLED, recent.toString()));
                       } catch (JSONException e) { throw new IllegalStateException("Could not save payment", e); }
                   }
                   if(entry!=null) CaptureCatalog.record(c,entry);
@@ -781,7 +817,7 @@ jobs:
               }
               public static void clear(Context c) {
                   synchronized (LOCK) {
-                      persist(prefs(c).edit().remove("queue").remove(SAVED).remove(HANDLED).remove("recent_phonepe").remove("recent_upi"));
+                      persist(prefs(c).edit().remove("queue").remove(SAVED).remove(HANDLED).remove("recent_phonepe").remove("recent_upi").remove(BANK_ACCOUNTS));
                       CaptureCatalog.clear(c);
                   }
                   QsWidgets.updateAll(c);
@@ -1358,7 +1394,7 @@ jobs:
                       .put("ts",item.optLong("ts",System.currentTimeMillis()));
                   JSONObject categories=new JSONObject();
                   for(String type:new String[]{"Expense","Income","Lent","Borrowed"})categories.put(type,new org.json.JSONArray(CaptureCatalog.labels(this,type)));
-                  return new JSONObject().put("payment",payment).put("sender",item.optString("from")).put("body",item.optString("body")).put("categories",categories)
+                  return new JSONObject().put("payment",payment).put("bankAccounts",SmsStore.mergeBankAccounts(this,null)).put("sender",item.optString("from")).put("body",item.optString("body")).put("categories",categories)
                       .put("accounts",CaptureCatalog.entryChoices(this,"accounts")).put("people",CaptureCatalog.entryChoices(this,"people"))
                       .put("customCategories",CaptureCatalog.custom(this)).put("categoryPicker",QsLanguage.categoryPicker(this))
                       .put("emiPlans",PlanningBridge.choices(this,"emiPlans")).put("subscriptions",PlanningBridge.choices(this,"subscriptions"))
@@ -1446,6 +1482,8 @@ jobs:
                       .put("ts",item.optLong("ts",System.currentTimeMillis())).put("smsFrom",item.optString("from")).put("smsBody",item.optString("body"));
                   String account=draft.optString("account");
                   if(!account.isEmpty()&&account.length()<=60)entry.put("acc",account);
+                  String bankKey=draft.optString("bankKey");
+                  if(SmsStore.bankKeyValid(bankKey))entry.put("bankKey",bankKey);
                   if(photo.length()<=180000&&photo.matches("^data:image/(?:jpeg|png|webp);base64,[A-Za-z0-9+/]+={0,2}$"))entry.put("photo",photo);
                   if("Expense".equals(type)){
                       int emiIndex=draft.optInt("emiIndex",-1);
