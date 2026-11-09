@@ -1,7 +1,7 @@
 name: Quick Spend Play Console Bundle
 on:
   push:
-    branches: [main]
+    branches: [main, codex/build-1091-ledger-reliability]
   workflow_dispatch:
     inputs:
       version_code:
@@ -105,8 +105,8 @@ jobs:
         run: sdkmanager "platforms;android-36" "build-tools;36.0.0"
       - name: Prepare native SMS bridge and Play release configuration
         env:
-          INPUT_VERSION_CODE: ${{ inputs.version_code }}
-          INPUT_VERSION_NAME: ${{ inputs.version_name }}
+          INPUT_VERSION_CODE: '1091'
+          INPUT_VERSION_NAME: '1091'
         run: |
           set -euo pipefail
           if [ ! -s assets/quickspend-icon.png ]; then
@@ -1859,11 +1859,11 @@ jobs:
           Path('dist/build-evidence.json').write_text(json.dumps(meta, indent=2))
           print('VERIFIED: signed release AAB, API 36, SMS bridge, native floating capture, receiver, permissions and version code.')
           PY_VERIFY
-          cp "$AAB" "dist/quickspend-build-${GITHUB_RUN_NUMBER}.aab"
-          sha256sum "dist/quickspend-build-${GITHUB_RUN_NUMBER}.aab" > dist/SHA256SUMS.txt
+          cp "$AAB" "dist/quickspend-build-1091.aab"
+          sha256sum "dist/quickspend-build-1091.aab" > dist/SHA256SUMS.txt
       - uses: actions/upload-artifact@v4
         with:
-          name: quickspend-play-bundle-${{ github.run_number }}
+          name: quickspend-play-bundle-1091
           path: dist/
           if-no-files-found: error
           retention-days: 14
