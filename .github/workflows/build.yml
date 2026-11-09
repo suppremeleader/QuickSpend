@@ -1348,7 +1348,7 @@ jobs:
                   if(draft!=null)review.putExtra("qsCaptureDraft",draft.toString()).putExtra("qsCapturePlanning",planning);
                   startActivity(review);hideAll();
               }
-              private JSONObject captureState(JSONObject item) throws JSONException {
+              private JSONObject captureState(JSONObject item) throws org.json.JSONException {
                   PaymentParser parsed=PaymentParser.parse(item);
                   String key=SmsStore.key(item),account="";
                   if(item.has("account"))account=item.optString("account");
@@ -1432,7 +1432,7 @@ jobs:
                       reply.success();hidePanel();updateOverlay();
                   }catch(Exception e){reply.error("Could not save. Try again.");}
               }
-              private JSONObject captureRecord(JSONObject item,JSONObject draft,CaptureEntryView.Reply reply) throws JSONException{
+              private JSONObject captureRecord(JSONObject item,JSONObject draft,CaptureEntryView.Reply reply) throws org.json.JSONException{
                   String type=draft.optString("type"),category=draft.optString("category"),who=draft.optString("who").trim();
                   double amount=draft.optDouble("amount");
                   if(!Double.isFinite(amount)||amount<=0){reply.error("Enter an amount greater than zero.");return null;}
