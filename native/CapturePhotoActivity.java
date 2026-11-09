@@ -42,9 +42,9 @@ public final class CapturePhotoActivity extends Activity {
                 if(!folder.isDirectory()&&!folder.mkdirs())throw new IllegalStateException("Could not create photo cache");
                 photoFile=File.createTempFile("receipt-",".jpg",folder);
                 Uri output=photoUri();
-                picker=new Intent(MediaStore.ACTION_IMAGE_CAPTURE).putExtra(MediaStore.EXTRA_OUTPUT,output)
-                    .setClipData(ClipData.newRawUri("Receipt photo",output))
-                    .addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION|Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                picker=new Intent(MediaStore.ACTION_IMAGE_CAPTURE).putExtra(MediaStore.EXTRA_OUTPUT,output);
+                picker.setClipData(ClipData.newRawUri("Receipt photo",output));
+                picker.addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION|Intent.FLAG_GRANT_READ_URI_PERMISSION);
             }else picker=new Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("image/*");
             startActivityForResult(picker,PICK);
             ResultReceiver receiver=getIntent().getParcelableExtra("qsCapturePhoto");
