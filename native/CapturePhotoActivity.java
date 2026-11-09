@@ -47,6 +47,8 @@ public final class CapturePhotoActivity extends Activity {
                     .addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION|Intent.FLAG_GRANT_READ_URI_PERMISSION);
             }else picker=new Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("image/*");
             startActivityForResult(picker,PICK);
+            ResultReceiver receiver=getIntent().getParcelableExtra("qsCapturePhoto");
+            if(receiver!=null)receiver.send(3,Bundle.EMPTY);
         }catch(Exception e){deliver(2,null);}
     }
 
