@@ -18,9 +18,16 @@ public final class QsLanguage {
         if (!"hi".equals(language) && !"en".equals(language)) throw new IllegalArgumentException("Unsupported language");
         if (!prefs(c).edit().putString("language", language).commit()) throw new IllegalStateException("Could not save language");
     }
-    public static String colorMode(Context c) { return "light".equals(prefs(c).getString("colorMode","dark")) ? "light" : "dark"; }
+    public static String colorMode(Context c) {
+        String mode=prefs(c).getString("colorMode","dark");
+        return "light".equals(mode)||"matte".equals(mode)?mode:"dark";
+    }
+    public static boolean categoryPicker(Context c){return prefs(c).getBoolean("categoryPicker",false);}
+    public static void setCategoryPicker(Context c,boolean enabled){
+        if(!prefs(c).edit().putBoolean("categoryPicker",enabled).commit())throw new IllegalStateException("Could not save category picker");
+    }
     public static void setColorMode(Context c,String mode) {
-        if(!"dark".equals(mode)&&!"light".equals(mode)) throw new IllegalArgumentException("Unsupported color mode");
+        if(!"dark".equals(mode)&&!"light".equals(mode)&&!"matte".equals(mode)) throw new IllegalArgumentException("Unsupported color mode");
         if(!prefs(c).edit().putString("colorMode",mode).commit()) throw new IllegalStateException("Could not save color mode");
     }
     public static void applySystemBars(android.app.Activity activity) {

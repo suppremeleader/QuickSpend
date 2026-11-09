@@ -6,7 +6,7 @@ function setup(snapshot,{storageWorks=true}={}){
  const seen=new Set(),nativePending=JSON.parse(JSON.stringify(snapshot.items||[])),nativeSaved=JSON.parse(JSON.stringify(snapshot.entries||[]));let acknowledged=[],completed=[],writes=0;
  const nodes={};const node=()=>({classList:{add(){},contains:()=>false}});
  const P={drain:async()=>({items:nativePending,entries:nativeSaved}),acknowledgeSaved:async({keys})=>{acknowledged.push(...keys);for(let i=nativeSaved.length-1;i>=0;i--)if(keys.includes(nativeSaved[i].nativeKey))nativeSaved.splice(i,1)},completeSms:async({sourceKey})=>{completed.push(sourceKey);for(let i=nativePending.length-1;i>=0;i--)if(nativePending[i].sourceKey===sourceKey)nativePending.splice(i,1)}};
- const context={language:'en',L:x=>x,SB:()=>P,tx:[],pending:[],speed:[],smsSeen:[],deletedSources:[],cur:{},sid:200,accts:[{n:'Main account',i:'🏦'}],CATS:{Expense:[['','Food'],['','Travel']],Income:[['','Salary']],Lent:[['','Friend']],Borrowed:[['','Family']]},parseSms:(from,body)=>/invalid/.test(body)?null:{m:'Shop',a:100,kind:'Expense',acc:'HDFC 1234'},fd:()=> '31 Oct',closeSheet(){},render(){},persist:()=>{writes++;return storageWorks},$:s=>nodes[s]||(nodes[s]=node()),openSheet(){},console:{warn(){}}};
+ const context={language:'en',L:x=>x,SB:()=>P,tx:[],pending:[],speed:[],smsSeen:[],deletedSources:[],cur:{},noteAttachment:(kind,value)=>typeof value==='string'&&value.startsWith('data:image/jpeg;base64,')?value:'',sid:200,accts:[{n:'Main account',i:'🏦'}],CATS:{Expense:[['','Food'],['','Travel']],Income:[['','Salary']],Lent:[['','Friend']],Borrowed:[['','Family']]},parseSms:(from,body)=>/invalid/.test(body)?null:{m:'Shop',a:100,kind:'Expense',acc:'HDFC 1234'},fd:()=> '31 Oct',closeSheet(){},render(){},persist:()=>{writes++;return storageWorks},$:s=>nodes[s]||(nodes[s]=node()),openSheet(){},console:{warn(){}}};
  vm.createContext(context);vm.runInContext(importer,context);
  return {c:context,nativeSaved,nativePending,acknowledged,completed,get writes(){return writes}};
 }
@@ -14,8 +14,8 @@ function setup(snapshot,{storageWorks=true}={}){
  const real={sourceKey:'sms-1',from:'HDFC',body:'Rs.100 debited',ts:100};
  let h=setup({items:[real,{...real,sourceKey:'demo-1',demo:true}]});
  await h.c.pull(true);assert.equal(h.c.pending.length,1);assert.equal(h.c.pending[0].sourceKey,'sms-1');assert.equal(h.nativePending.length,2);await h.c.pull(true);assert.equal(h.c.pending.length,1);
- h=setup({entries:[{nativeKey:'saved-1',sourceKey:'saved-1',t:'Expense',a:125,c:'Food',m:'Shop',ts:100}]});
- await h.c.pull(true);assert.equal(h.c.tx.length,1);assert.equal(h.c.tx[0].a,125);assert.deepEqual(h.acknowledged,['saved-1']);assert.equal(h.nativeSaved.length,0);await h.c.pull(true);assert.equal(h.c.tx.length,1);
+ h=setup({entries:[{nativeKey:'saved-1',sourceKey:'saved-1',t:'Expense',a:125,c:'Food',m:'Shop',ts:100,photo:'data:image/jpeg;base64,AAAA'}]});
+ await h.c.pull(true);assert.equal(h.c.tx.length,1);assert.equal(h.c.tx[0].photo,'data:image/jpeg;base64,AAAA');assert.equal(h.c.tx[0].a,125);assert.deepEqual(h.acknowledged,['saved-1']);assert.equal(h.nativeSaved.length,0);await h.c.pull(true);assert.equal(h.c.tx.length,1);
  h=setup({entries:[{nativeKey:'debt-1',t:'Lent',a:250,c:'Friend',who:'Asha',ts:100}]});
  h.c.pending.push({sourceKey:'debt-1'});await h.c.pull(true);assert.equal(h.c.tx[0].who,'Asha');assert.equal(h.c.tx[0].t,'Lent');assert.equal(h.c.pending.length,0);assert.equal(h.c.speed[0],'Asha');
  h=setup({entries:[{nativeKey:'duplicate-1',t:'Expense',a:125,c:'Food',ts:100}]});h.c.tx.push({sourceKey:'duplicate-1',a:125});await h.c.pull(true);assert.equal(h.c.tx.length,1);assert.deepEqual(h.acknowledged,['duplicate-1']);
@@ -29,7 +29,7 @@ function setup(snapshot,{storageWorks=true}={}){
  // Exercise the actual Review Save function, including local-storage failure.
  const saveCode=html.slice(html.indexOf('function isUpiPayment('),html.indexOf('const MN='));
  function saving(works=true){
-  const c={noteBusy:false,noteAttachment:()=>'',noteMessage(){},L:x=>x,cur:{id:1,m:'Shop',a:125,type:'Expense',cat:'Food',sourceKey:'review-save',acc:'Main'},tx:[],pending:[{id:1,sourceKey:'review-save'}],recur:[],memory:{},sid:200,CATS:{Expense:[['','Food']]},SB:()=>({completeSms:async()=>{c.completed++}}),persist:()=>works,closeSheet:()=>{c.closed++},render(){},paint(){},fd:()=> '31 Oct',alert:()=>{c.alerted++},completed:0,closed:0,alerted:0};
+  const c={appUpdate:{info:null},noteBusy:false,noteAttachment:()=>'',noteMessage(){},L:x=>x,cur:{id:1,m:'Shop',a:125,type:'Expense',cat:'Food',sourceKey:'review-save',acc:'Main'},tx:[],pending:[{id:1,sourceKey:'review-save'}],recur:[],memory:{},sid:200,CATS:{Expense:[['','Food']]},SB:()=>({completeSms:async()=>{c.completed++}}),persist:()=>works,closeSheet:()=>{c.closed++},render(){},paint(){},fd:()=> '31 Oct',alert:()=>{c.alerted++},completed:0,closed:0,alerted:0};
   vm.createContext(c);vm.runInContext(saveCode,c);return c;
  }
  let s=saving();s.save();assert.equal(s.tx.length,1);assert.equal(s.pending.length,0);assert.equal(s.completed,1);s.save();assert.equal(s.tx.length,1,'Repeated Save must not duplicate');

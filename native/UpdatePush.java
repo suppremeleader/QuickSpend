@@ -29,6 +29,18 @@ public final class UpdatePush {
     }
     public static long installed(Context c){try{android.content.pm.PackageInfo info=c.getPackageManager().getPackageInfo(c.getPackageName(),0);return Build.VERSION.SDK_INT>=28?info.getLongVersionCode():info.versionCode;}catch(Exception e){return Long.MAX_VALUE;}}
     public static Intent storeIntent(Context c){Intent intent=new Intent(Intent.ACTION_VIEW,Uri.parse("market://details?id="+c.getPackageName())).setPackage("com.android.vending");if(intent.resolveActivity(c.getPackageManager())==null)intent=new Intent(Intent.ACTION_VIEW,Uri.parse("https://play.google.com/store/apps/details?id="+c.getPackageName()));return intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);}
+    public static long required(Context c){long version=prefs(c).getLong("required_version",0);return version>installed(c)?version:0;}
+    public static long recordAvailability(Context c,com.google.android.play.core.appupdate.AppUpdateInfo info){
+        int availability=info.updateAvailability();
+        if(availability==com.google.android.play.core.install.model.UpdateAvailability.UNKNOWN)return required(c);
+        long version=info.availableVersionCode();
+        boolean eligible=availability==com.google.android.play.core.install.model.UpdateAvailability.UPDATE_AVAILABLE
+            ||availability==com.google.android.play.core.install.model.UpdateAvailability.DEVELOPER_TRIGGERED_UPDATE_IN_PROGRESS
+            ||info.installStatus()==com.google.android.play.core.install.model.InstallStatus.DOWNLOADED;
+        long required=eligible&&version>installed(c)&&version<=UpdatePolicy.MAX_VERSION?version:0;
+        prefs(c).edit().putLong("required_version",required).apply();
+        return required;
+    }
     public static void show(Context c,String packageName,String offered){
         long code=UpdatePolicy.version(offered);SharedPreferences p=prefs(c);
         if(!c.getPackageName().equals(packageName)||!UpdatePolicy.notify(installed(c),code,p.getLong("notified",0),enabled(c))||!allowed(c))return;
