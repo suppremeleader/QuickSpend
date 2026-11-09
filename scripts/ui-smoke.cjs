@@ -161,7 +161,7 @@ const {chromium}=require(process.env.PLAYWRIGHT_MODULE||'playwright'),assert=req
  const overflow=await page.locator('#onb').evaluate(el=>el.scrollWidth>el.clientWidth+1);assert.equal(overflow,false,'Setup must fit phone width');assert.deepEqual(errors,[]);
  const overlay=await browser.newPage({viewport:{width:390,height:650}});
  const overlayErrors=[];overlay.on('pageerror',e=>overlayErrors.push(e.message));
- const stubPhoto='data:image/png;base64,'+fs.readFileSync('assets/quickspend-icon.png').toString('base64');
+ const stubPhoto='data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aX1sAAAAASUVORK5CYII=';
  await overlay.addInitScript(photo=>{
   window.captureActions=[];
   window.QuickCapture={postMessage(raw){

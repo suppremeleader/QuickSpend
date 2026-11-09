@@ -415,6 +415,7 @@ jobs:
               getActivity().runOnUiThread(()->{
                 android.os.ResultReceiver receiver=new android.os.ResultReceiver(new android.os.Handler(android.os.Looper.getMainLooper())){
                   @Override protected void onReceiveResult(int result,android.os.Bundle payload){
+                    if(result==3)return;
                     if(result==2){call.reject("Could not attach this picture.");return;}
                     JSObject out=new JSObject();
                     if(result==1)out.put("photo",payload.getString("photo",""));
@@ -1458,10 +1459,19 @@ jobs:
               }
               private void pickCapturePhoto(LinearLayout frame,String source,CaptureEntryView.Reply reply){
                   if(capturePhotoOpen||(!"camera".equals(source)&&!"browse".equals(source))){reply.error("Could not attach this picture.");return;}
+                  final boolean[] pickerStarted={false},settled={false};
+                  Runnable launchTimeout=()->{
+                      if(settled[0]||pickerStarted[0]||panel!=frame)return;
+                      settled[0]=true;capturePhotoOpen=false;reply.error("Could not attach this picture.");
+                  };
                   android.os.ResultReceiver receiver=new android.os.ResultReceiver(main){
                       @Override protected void onReceiveResult(int result,android.os.Bundle payload){
-                          capturePhotoOpen=false;
-                          if(panel!=frame)return;
+                          if(settled[0]||panel!=frame)return;
+                          main.removeCallbacks(launchTimeout);
+                          if(result==3){
+                              pickerStarted[0]=true;frame.setVisibility(View.INVISIBLE);return;
+                          }
+                          settled[0]=true;capturePhotoOpen=false;
                           frame.setVisibility(View.VISIBLE);ViewCompat.requestApplyInsets(frame);
                           if(result==1)reply.send("photo",payload.getString("photo",""));
                           else if(result==2)reply.error("Could not attach this picture.");
@@ -1470,10 +1480,11 @@ jobs:
                   };
                   ((InputMethodManager)getSystemService(INPUT_METHOD_SERVICE)).hideSoftInputFromWindow(frame.getWindowToken(),0);
                   try{
-                      capturePhotoOpen=true;frame.setVisibility(View.INVISIBLE);
+                      capturePhotoOpen=true;
                       startActivity(CapturePhotoActivity.launch(this,source,receiver));
+                      main.postDelayed(launchTimeout,8000);
                   }catch(RuntimeException e){
-                      capturePhotoOpen=false;frame.setVisibility(View.VISIBLE);reply.error("Could not attach this picture.");
+                      settled[0]=true;capturePhotoOpen=false;reply.error("Could not attach this picture.");
                   }
               }
               private void releaseCaptureEntry(){
