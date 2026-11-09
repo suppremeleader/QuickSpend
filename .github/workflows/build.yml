@@ -121,11 +121,16 @@ jobs:
           D=android/app/src/main/java/com/quickspend/app
           mkdir -p $D android/app/src/main/res/raw
           cp assets/capture-appear.mp3 android/app/src/main/res/raw/qs_capture_appear.mp3
-          cp native/CaptureSound.java native/CaptureSoundPolicy.java native/CaptureRecovery.java native/CaptureRecoveryJob.java native/CaptureWakePolicy.java native/CaptureCatalog.java native/QuickAccessConfig.java native/QuickAccessPolicy.java native/QuickAccessOverlay.java native/QsLanguage.java native/AccountBridgePlugin.java native/UpdatePolicy.java native/UpdatePush.java native/UpdateMessagingService.java native/UpdateBridgePlugin.java native/CapturePhotoActivity.java $D/
+          cp native/CaptureSound.java native/CaptureSoundPolicy.java native/CaptureRecovery.java native/CaptureRecoveryJob.java native/CaptureWakePolicy.java native/CaptureCatalog.java native/QuickAccessConfig.java native/QuickAccessPolicy.java native/QuickAccessOverlay.java native/QsLanguage.java native/AccountBridgePlugin.java native/UpdatePolicy.java native/UpdatePush.java native/UpdateMessagingService.java native/UpdateBridgePlugin.java native/CapturePhotoActivity.java native/CaptureEntryView.java $D/
           if [ -s config/google-services.json ]; then
             mkdir -p android/app/src/main/assets/cloud
             cp config/google-services.json android/app/src/main/assets/cloud/
           fi
+          cat >> android/app/build.gradle <<'EOF'
+          dependencies {
+              implementation "androidx.webkit:webkit:1.11.0"
+          }
+          EOF
           cat > $D/SmsReceiver.java <<'EOF'
           package com.quickspend.app;
 
@@ -401,6 +406,25 @@ jobs:
             public void clearNativeInbox(PluginCall call) {
               try { SmsStore.clear(getContext()); call.resolve(); }
               catch (Exception e) { call.reject("Could not clear native payment inbox", e); }
+            }
+
+            @PluginMethod
+            public void pickEntryPicture(PluginCall call) {
+              String source=call.getString("source","browse");
+              if(!"browse".equals(source)&&!"camera".equals(source)){call.reject("Invalid photo source");return;}
+              getActivity().runOnUiThread(()->{
+                android.os.ResultReceiver receiver=new android.os.ResultReceiver(new android.os.Handler(android.os.Looper.getMainLooper())){
+                  @Override protected void onReceiveResult(int result,android.os.Bundle payload){
+                    if(result==3)return;
+                    if(result==2){call.reject("Could not attach this picture.");return;}
+                    JSObject out=new JSObject();
+                    if(result==1)out.put("photo",payload.getString("photo",""));
+                    call.resolve(out);
+                  }
+                };
+                try{getActivity().startActivity(CapturePhotoActivity.launch(getActivity(),source,receiver));}
+                catch(RuntimeException e){call.reject("Could not attach this picture.",e);}
+              });
             }
 
             @PluginMethod
@@ -1055,7 +1079,7 @@ jobs:
                       applyPalette();
                       if (!enabled(this) || !Settings.canDrawOverlays(this)) { hideAll(); stopSelf(); return; }
                       if (appVisible || screenLocked()) { hideAll(); return; }
-                      if (dismissingBubble) return;
+                      if (dismissingBubble||capturePhotoOpen) return;
                       if (hiddenUntilNextPayment) { hideAll(); return; }
                       List<JSONObject> q = payments();
                       if (q.isEmpty()) { hideAll(); return; }
@@ -1315,222 +1339,159 @@ jobs:
                   frame.setOnTouchListener((v,event)->{if(event.getAction()==MotionEvent.ACTION_OUTSIDE){collapsePanel();return true;}return false;});
                   try{windows.addView(frame,lp);panel=frame;}catch(RuntimeException e){panelKey=null;updateOverlay();}
               }
+              private CaptureEntryView captureEntry;
+              private boolean capturePhotoOpen;
+              private void openCaptureInApp(JSONObject item,JSONObject draft,String planning) {
+                  Intent review=new Intent(this,MainActivity.class)
+                      .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_CLEAR_TOP|Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                      .putExtra("qsPlanningAction","review").putExtra("qsPlanningKey",SmsStore.key(item));
+                  if(draft!=null)review.putExtra("qsCaptureDraft",draft.toString()).putExtra("qsCapturePlanning",planning);
+                  startActivity(review);hideAll();
+              }
+              private JSONObject captureState(JSONObject item) throws org.json.JSONException {
+                  PaymentParser parsed=PaymentParser.parse(item);
+                  String key=SmsStore.key(item),account="";
+                  if(item.has("account"))account=item.optString("account");
+                  JSONObject payment=new JSONObject().put("id",1).put("m",parsed.merchant)
+                      .put("a",parsed.amount).put("kind",parsed.type).put("acc",account).put("sourceKey",key)
+                      .put("sourceApp",item.optString("from")).put("demo",item.optBoolean("demo"))
+                      .put("ts",item.optLong("ts",System.currentTimeMillis()));
+                  JSONObject categories=new JSONObject();
+                  for(String type:new String[]{"Expense","Income","Lent","Borrowed"})categories.put(type,new org.json.JSONArray(CaptureCatalog.labels(this,type)));
+                  return new JSONObject().put("payment",payment).put("sender",item.optString("from")).put("body",item.optString("body")).put("categories",categories)
+                      .put("accounts",CaptureCatalog.entryChoices(this,"accounts")).put("people",CaptureCatalog.entryChoices(this,"people"))
+                      .put("customCategories",CaptureCatalog.custom(this)).put("categoryPicker",QsLanguage.categoryPicker(this))
+                      .put("emiPlans",PlanningBridge.choices(this,"emiPlans")).put("subscriptions",PlanningBridge.choices(this,"subscriptions"))
+                      .put("language",QsLanguage.get(this)).put("colorMode",QsLanguage.colorMode(this));
+              }
               private void showPanel(JSONObject item) {
                   if(UpdatePush.required(this)>0){showRequiredUpdate(item);return;}
-                  if (SmsStore.requiresReview(this,item)) {
-                      Intent review = new Intent(this,MainActivity.class)
-                              .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP)
-                              .putExtra("qsPlanningAction","review").putExtra("qsPlanningKey",SmsStore.key(item));
-                      try { startActivity(review); hideAll(); }
-                      catch (RuntimeException e) { Toast.makeText(this,tr("Open QuickSpend to review this payment."),Toast.LENGTH_SHORT).show(); }
+                  if(SmsStore.requiresReview(this,item)||!CaptureEntryView.supported()){
+                      try{openCaptureInApp(item,null,"");}
+                      catch(RuntimeException e){Toast.makeText(this,tr("Open QuickSpend to review this payment."),Toast.LENGTH_SHORT).show();}
                       return;
                   }
-                  hideBubble(); hidePanel(); panelKey = SmsStore.key(item);
-                  PaymentParser details = PaymentParser.parse(item);
-                  LinearLayout frame = new LinearLayout(this); frame.setOrientation(LinearLayout.VERTICAL);
-                  ScrollView scroll = new ScrollView(this); scroll.setFillViewport(false); scroll.setVerticalScrollBarEnabled(false); scroll.setClipToOutline(true);
-                  GradientDrawable card=shape(BG,28);
-                  card.setStroke(dp(1),lightMode?0xffdedede:0xff31313c);
-                  frame.setBackground(card);frame.setClipToOutline(true);frame.setFocusableInTouchMode(true);
-                  frame.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));
-                  LinearLayout root = new LinearLayout(this); root.setOrientation(LinearLayout.VERTICAL); root.setPadding(dp(20), dp(18), dp(20), dp(8)); scroll.addView(root);
-                  LinearLayout header = row(); TextView title = text(tr(item.optBoolean("demo") ? "Try quick capture" : "New entry"), 19, FG); title.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
-                  header.addView(title, new LinearLayout.LayoutParams(0, -2, 1)); Button fullscreen = button("⛶", false); fullscreen.setContentDescription(tr("Expand quick capture to fullscreen")); header.addView(fullscreen, new LinearLayout.LayoutParams(dp(44),dp(44))); Button close = button("×", false); close.setContentDescription(tr("Close quick capture")); header.addView(close, new LinearLayout.LayoutParams(dp(44), dp(44))); append(root, header, 10);
-                  TextView merchant = text(item.optBoolean("demo") ? tr("Preview only · no expense will be saved") : details.merchant, 13, MUTED); append(root, merchant, 8);
-                  LinearLayout amountRow = row(); amountRow.setGravity(Gravity.CENTER); amountRow.setPadding(dp(12),dp(10),dp(12),dp(10));
-                  TextView amountLabel = text("₹" + details.amountText(), 40, FG); amountLabel.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
-                  EditText amount = new EditText(this); amount.setText(details.amountText()); amount.setTextSize(28); amount.setTextColor(FG); amount.setSingleLine(true); amount.setSelectAllOnFocus(true); amount.setInputType(InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_DECIMAL); amount.setVisibility(View.GONE); amount.setContentDescription(tr("Payment amount in rupees"));
-                  amountRow.addView(amountLabel); amountRow.addView(amount, new LinearLayout.LayoutParams(0, -2, 1));
-                  Button pencil = button("✎", false); pencil.setContentDescription(tr("Edit amount")); LinearLayout.LayoutParams penLp = new LinearLayout.LayoutParams(dp(44), dp(44)); penLp.leftMargin = dp(8); amountRow.addView(pencil, penLp); append(root, amountRow, 16);
-                  EditText comment = new EditText(this); comment.setTextColor(FG); comment.setTextSize(14); comment.setHintTextColor(MUTED); comment.setHint(tr("Optional")); comment.setContentDescription(tr("Comment")); comment.setSingleLine(true); comment.setBackground(chipBackground(false)); comment.setPadding(dp(12),dp(10),dp(12),dp(10)); comment.setFilters(new android.text.InputFilter[]{new android.text.InputFilter.LengthFilter(300)}); append(root,comment,8);
-                  LinearLayout entryTools=row();append(root,entryTools,10);
-                  Button categoryPicker=button("Change category",false), picture=button("Add picture",false);
-                  final boolean pickerEnabled=QsLanguage.categoryPicker(this);
-                  if(pickerEnabled){LinearLayout.LayoutParams categoryLp=new LinearLayout.LayoutParams(0,dp(48),1);categoryLp.rightMargin=dp(8);entryTools.addView(categoryPicker,categoryLp);}
-                  entryTools.addView(picture,new LinearLayout.LayoutParams(0,dp(48),1));
-                  final String[] photo={""};
-                  Button removePhoto=button("Remove picture",false);append(root,removePhoto,5);removePhoto.setVisibility(View.GONE);
-                  removePhoto.setOnClickListener(v->{photo[0]="";picture.setText(tr("Add picture"));removePhoto.setVisibility(View.GONE);});
-                  picture.setOnClickListener(v->{
-                      android.os.ResultReceiver receiver=new android.os.ResultReceiver(main){
-                          @Override protected void onReceiveResult(int result,android.os.Bundle payload){
-                              if(panel!=frame)return;
-                              frame.setVisibility(View.VISIBLE);
-                              if(result==1){photo[0]=payload.getString("photo","");picture.setText(tr("Picture attached"));removePhoto.setVisibility(View.VISIBLE);}
-                              else if(result==2)Toast.makeText(FloatingCaptureService.this,tr("Could not attach this picture."),Toast.LENGTH_SHORT).show();
-                          }
-                      };
-                      ((InputMethodManager)getSystemService(INPUT_METHOD_SERVICE)).hideSoftInputFromWindow(frame.getWindowToken(),0);
-                      Intent picker=new Intent(this,CapturePhotoActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK).putExtra("qsCapturePhoto",receiver);
-                      try{frame.setVisibility(View.INVISIBLE);startActivity(picker);}
-                      catch(RuntimeException e){frame.setVisibility(View.VISIBLE);Toast.makeText(this,tr("Could not attach this picture."),Toast.LENGTH_SHORT).show();}
-                  });
-                  final String[] type = {details.type}, category = {"Uncategorised"};
-                  final java.util.Map<String,java.util.List<String>> panelCategories=new java.util.HashMap<>();
-                  LinearLayout types = row(); append(root, types, 16);
-                  EditText person = new EditText(this); person.setTextColor(FG); person.setTextSize(14); person.setSingleLine(true); person.setHintTextColor(MUTED); person.setHint(tr("Person's name")); person.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_CAP_WORDS); person.setContentDescription(tr("Person's name for money lent or borrowed")); append(root, person, 10); person.setVisibility(View.GONE);
-                  TextView categoryTitle = text(tr("Save now. Sort it whenever."), 13, MUTED); append(root, categoryTitle, 12);
-                  LinearLayout categories = new LinearLayout(this); categories.setOrientation(LinearLayout.VERTICAL); append(root, categories, 8);
-                  Runnable drawCategories = () -> {
-                      categories.removeAllViews();
-                      if(!panelCategories.containsKey(type[0])) panelCategories.put(type[0],CaptureCatalog.labels(this,type[0]));
-                      String[] labels=panelCategories.get(type[0]).toArray(new String[0]);
-                      for (int i = 0; i < labels.length; i += 2) {
-                          LinearLayout categoryRow = row();
-                          for (int j = i; j < Math.min(i + 2, labels.length); j++) {
-                              String label = labels[j]; Button chip = button(tr(label), label.equals(category[0])); chip.setCompoundDrawables(CategorySymbols.drawable(this,label),null,null,null); chip.setCompoundDrawablePadding(dp(5)); chip.setSingleLine(true); chip.setEllipsize(android.text.TextUtils.TruncateAt.END); chip.setTag(label); chip.setContentDescription(tr(label) + ("hi".equals(QsLanguage.get(this)) ? " श्रेणी" : " category"));
-                              LinearLayout.LayoutParams chipLp = new LinearLayout.LayoutParams(0, dp(52), 1); chipLp.setMargins(dp(3), dp(3), dp(3), dp(3)); categoryRow.addView(chip, chipLp);
-                              chip.setOnClickListener(view -> { category[0] = label; for (int a = 0; a < categories.getChildCount(); a++) { LinearLayout r = (LinearLayout) categories.getChildAt(a); for (int b = 0; b < r.getChildCount(); b++) { Button other = (Button) r.getChildAt(b); boolean active = label.equals(other.getTag()); other.setTextColor(active ? selectedForeground() : FG); other.setBackground(chipBackground(active)); } } });
-                          }
-                          categories.addView(categoryRow);
-                      }
-                  };
-                  for (String label : new String[]{"Expense", "Income", "Lent", "Borrowed"}) {
-                      Button choice = button(label, label.equals(type[0])); choice.setTag(label); choice.setTextSize(11);
-                      LinearLayout.LayoutParams choiceLp = new LinearLayout.LayoutParams(0, dp(44), 1); choiceLp.setMargins(dp(2), 0, dp(2), 0); types.addView(choice, choiceLp);
-
-                  }
-                  drawCategories.run();
-                  Button addCategory=button("+ " + tr("Add category"),false); append(root,addCategory,6);
-                  LinearLayout categoryForm=row(); EditText categoryName=new EditText(this); categoryName.setTextColor(FG); categoryName.setHintTextColor(MUTED); categoryName.setHint(tr("New category")); categoryName.setContentDescription(tr("New category")); categoryName.setSingleLine(true); categoryName.setFilters(new android.text.InputFilter[]{new android.text.InputFilter.LengthFilter(40)}); categoryForm.addView(categoryName,new LinearLayout.LayoutParams(0,-2,1)); Button createCategory=button("Add",true); categoryForm.addView(createCategory,new LinearLayout.LayoutParams(-2,dp(44))); append(root,categoryForm,6); categoryForm.setVisibility(View.GONE);
-                  addCategory.setOnClickListener(view->{categoryForm.setVisibility(categoryForm.getVisibility()==View.VISIBLE?View.GONE:View.VISIBLE);if(categoryForm.getVisibility()==View.VISIBLE){categoryName.requestFocus();categoryName.post(()->((InputMethodManager)getSystemService(INPUT_METHOD_SERVICE)).showSoftInput(categoryName,InputMethodManager.SHOW_IMPLICIT));}});
-                  createCategory.setOnClickListener(view->{String name=categoryName.getText().toString().trim();try{if(!CaptureCatalog.add(this,type[0],name)){categoryName.setError(tr("Choose a unique category name (up to 40 characters)."));return;}java.util.List<String> labels=panelCategories.get(type[0]);if(labels==null){labels=CaptureCatalog.labels(this,type[0]);panelCategories.put(type[0],labels);}else labels.add(name);category[0]=name;categoryPicker.setText(tr("Change category")+" · "+name);categoryName.setText("");categoryForm.setVisibility(View.GONE);((InputMethodManager)getSystemService(INPUT_METHOD_SERVICE)).hideSoftInputFromWindow(categoryName.getWindowToken(),0);drawCategories.run();}catch(RuntimeException e){categoryName.setError(tr("Could not save. Try again."));}});
-                  final String[] subscriptionId={""}, linkedEmiName={""}; final int[] linkedEmiIndex={-1};
-                  LinearLayout planningPickers=new LinearLayout(this);planningPickers.setOrientation(LinearLayout.VERTICAL);append(root,planningPickers,10);
-                  org.json.JSONArray nativeEmi=PlanningBridge.choices(this,"emiPlans"),nativeSubs=PlanningBridge.choices(this,"subscriptions");
-                  Button[] planningToggles={button("EMI  ⌄",false),button("Subscriptions  ⌄",false)};
-                  LinearLayout[] choices={new LinearLayout(this),new LinearLayout(this)};
-                  Runnable clearLinks=()->{linkedEmiIndex[0]=-1;linkedEmiName[0]="";subscriptionId[0]="";planningToggles[0].setText(tr("EMI")+"  ⌄");planningToggles[1].setText(tr("Subscriptions")+"  ⌄");};
-                  for(int pick=0;pick<2;pick++){
-                      final int index=pick;
-                      boolean emi=pick==0;LinearLayout list=choices[pick];list.setOrientation(LinearLayout.VERTICAL);
-                      append(planningPickers,planningToggles[pick],6);append(planningPickers,list,4);list.setVisibility(View.GONE);
-                      planningToggles[pick].setOnClickListener(v->{boolean open=list.getVisibility()!=View.VISIBLE;choices[1-index].setVisibility(View.GONE);list.setVisibility(open?View.VISIBLE:View.GONE);if(open)scroll.post(()->scroll.smoothScrollTo(0,planningPickers.getBottom()));});
-                      Button none=button("None",false);append(list,none,2);none.setOnClickListener(v->{clearLinks.run();list.setVisibility(View.GONE);});
-                      org.json.JSONArray records=emi?nativeEmi:nativeSubs;
-                      for(int j=0;j<records.length();j++){
-                          JSONObject record=records.optJSONObject(j);
-                          if(record==null||(!emi&&!"active".equals(record.optString("status"))))continue;
-                          String name=record.optString("name");Button option=button(name,false);append(list,option,3);
-                          option.setOnClickListener(v->{clearLinks.run();if(emi){linkedEmiIndex[0]=record.optInt("index",-1);linkedEmiName[0]=name;}else subscriptionId[0]=record.optString("id");planningToggles[index].setText(tr(emi?"EMI":"Subscriptions")+" · "+name+"  ⌄");list.setVisibility(View.GONE);});
-                      }
-                  }
-                  for(int j=0;j<types.getChildCount();j++){
-                      View v=types.getChildAt(j);
-                      v.setOnClickListener(ignored->{
-                          type[0]=String.valueOf(v.getTag());category[0]="Uncategorised";
-                          for(int k=0;k<types.getChildCount();k++){Button other=(Button)types.getChildAt(k);boolean selected=type[0].equals(other.getTag());other.setTextColor(selected?selectedForeground():FG);other.setBackground(chipBackground(selected));}
-                          boolean debt="Lent".equals(type[0])||"Borrowed".equals(type[0]);person.setVisibility(debt?View.VISIBLE:View.GONE);person.setHint(tr("Lent".equals(type[0])?"Who did you lend to?":"Who did you borrow from?"));
-                          planningPickers.setVisibility("Expense".equals(type[0])?View.VISIBLE:View.GONE);clearLinks.run();choices[0].setVisibility(View.GONE);choices[1].setVisibility(View.GONE);
-                          categoryPicker.setText(tr("Change category"));drawCategories.run();
-                      });
-                  }
-                  planningPickers.setVisibility("Expense".equals(type[0])?View.VISIBLE:View.GONE);
-                  LinearLayout footer = new LinearLayout(this); footer.setOrientation(LinearLayout.VERTICAL); footer.setPadding(dp(16),dp(8),dp(16),dp(24)); footer.setClipChildren(false); footer.setClipToPadding(false); footer.setBackground(shape(BG,0)); frame.addView(footer,new LinearLayout.LayoutParams(-1,-2));
-                  TextView error = text(tr(""), 12, lightMode?Color.rgb(181,45,68):Color.rgb(255,128,128)); error.setVisibility(View.GONE); append(footer, error, 0);
-                  LinearLayout actions = row();
-                  Button delete = button("Delete", false), later = button("Later", false), save = button(item.optBoolean("demo") ? "Finish test" : "Save", true);
-                  int danger = lightMode?0xffa5263a:0xffffaab9;
-                  delete.setTextColor(danger);
-                  GradientDrawable deleteBg=shape(lightMode?0xfffaecee:0xff332228,26);
-                  deleteBg.setStroke(dp(1),lightMode?0xffecc1c8:0xff61363e);
-                  delete.setBackground(new RippleDrawable(ColorStateList.valueOf(0x28ffffff),deleteBg,null));
-                  android.graphics.drawable.Drawable trash = getDrawable(android.R.drawable.ic_menu_delete).mutate();
-                  trash.setTint(danger); trash.setBounds(0,0,dp(16),dp(16));
-                  delete.setCompoundDrawables(trash,null,null,null); delete.setCompoundDrawablePadding(dp(3));
-                  LinearLayout.LayoutParams actionLp = new LinearLayout.LayoutParams(0, dp(52), 1); actionLp.setMargins(dp(3), dp(6), dp(3), 0);
-                  actions.addView(delete, new LinearLayout.LayoutParams(actionLp));
-                  actions.addView(later, new LinearLayout.LayoutParams(actionLp));
-                  LinearLayout.LayoutParams saveLp = new LinearLayout.LayoutParams(actionLp); saveLp.weight=1.35f;
-                  actions.addView(save, saveLp); append(footer, actions, 0);
-                  if(pickerEnabled){
-                      categories.setVisibility(View.GONE);categoryTitle.setVisibility(View.GONE);addCategory.setVisibility(View.GONE);
-                      LinearLayout pickerPage=new LinearLayout(this);pickerPage.setOrientation(LinearLayout.VERTICAL);pickerPage.setPadding(dp(20),dp(16),dp(20),dp(16));
-                      frame.addView(pickerPage,new LinearLayout.LayoutParams(-1,0,1));pickerPage.setVisibility(View.GONE);
-                      Button back=button("←  "+tr("Change category"),false);append(pickerPage,back,0);
-                      LinearLayout tabs=row();append(pickerPage,tabs,8);
-                      Button general=button("General",true),custom=button("My categories",false);
-                      tabs.addView(general,new LinearLayout.LayoutParams(0,dp(44),1));tabs.addView(custom,new LinearLayout.LayoutParams(0,dp(44),1));
-                      ScrollView listScroll=new ScrollView(this);pickerPage.addView(listScroll,new LinearLayout.LayoutParams(-1,0,1));
-                      LinearLayout list=new LinearLayout(this);list.setOrientation(LinearLayout.VERTICAL);listScroll.addView(list);
-                      Button create=button("Create a category",true);append(pickerPage,create,8);
-                      Runnable backToEntry=()->{pickerPage.setVisibility(View.GONE);scroll.setVisibility(View.VISIBLE);footer.setVisibility(View.VISIBLE);categoryPicker.setText(tr("Change category")+" · "+tr(category[0]));};
-                      androidx.core.util.Consumer<Boolean> showCategories=my->{
-                          list.removeAllViews();
-                          general.setTextColor(!my?selectedForeground():FG);general.setBackground(chipBackground(!my));
-                          custom.setTextColor(my?selectedForeground():FG);custom.setBackground(chipBackground(my));
-                          org.json.JSONArray customNames=CaptureCatalog.custom(this).optJSONArray(type[0]);
-                          java.util.Set<String> names=new java.util.HashSet<>();
-                          if(customNames!=null)for(int k=0;k<customNames.length();k++)names.add(customNames.optString(k));
-                          for(String label:CaptureCatalog.labels(this,type[0])){
-                              if(names.contains(label)!=my)continue;
-                              Button option=button(label,label.equals(category[0]));option.setGravity(Gravity.CENTER_VERTICAL|Gravity.START);
-                              option.setCompoundDrawables(CategorySymbols.drawable(this,label),null,null,null);option.setCompoundDrawablePadding(dp(8));append(list,option,3);
-                              option.setOnClickListener(v->{category[0]=label;backToEntry.run();});
-                          }
-                          listScroll.scrollTo(0,0);
-                      };
-                      general.setOnClickListener(v->showCategories.accept(false));custom.setOnClickListener(v->showCategories.accept(true));back.setOnClickListener(v->backToEntry.run());
-                      create.setOnClickListener(v->{backToEntry.run();categoryForm.setVisibility(View.VISIBLE);scroll.post(()->scroll.smoothScrollTo(0,categoryForm.getBottom()));categoryName.requestFocus();((InputMethodManager)getSystemService(INPUT_METHOD_SERVICE)).showSoftInput(categoryName,InputMethodManager.SHOW_IMPLICIT);});
-                      categoryPicker.setOnClickListener(v->{scroll.setVisibility(View.GONE);footer.setVisibility(View.GONE);pickerPage.setVisibility(View.VISIBLE);showCategories.accept(false);});
-                  }
-                  WindowManager.LayoutParams lp = new WindowManager.LayoutParams(Math.min(dp(380), display().widthPixels - dp(24)), Math.min(dp(640), display().heightPixels - dp(80)), windowType(), WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL | WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH, PixelFormat.TRANSLUCENT);
-                  lp.gravity = Gravity.CENTER; lp.softInputMode = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE;
-                  frame.setOnTouchListener((view, event) -> { if (event.getAction() == MotionEvent.ACTION_OUTSIDE) { collapsePanel(); return true; } return false; });
-                  final boolean[] expanded = {false};
-                  final int[] desiredHeight={Math.min(dp(640),display().heightPixels-dp(80))};
-                  ViewCompat.setOnApplyWindowInsetsListener(frame,(view,insets)->{
+                  hideBubble();hidePanel();panelKey=SmsStore.key(item);
+                  LinearLayout frame=new LinearLayout(this);frame.setOrientation(LinearLayout.VERTICAL);
+                  WindowManager.LayoutParams lp=new WindowManager.LayoutParams(
+                      Math.min(dp(480),display().widthPixels),Math.min(dp(750),display().heightPixels-dp(26)),
+                      windowType(),WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL|WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH,
+                      PixelFormat.TRANSLUCENT);
+                  lp.gravity=Gravity.BOTTOM|Gravity.CENTER_HORIZONTAL;
+                  lp.softInputMode=WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE;
+                  frame.setOnTouchListener((v,event)->{if(event.getAction()==MotionEvent.ACTION_OUTSIDE&&!capturePhotoOpen){collapsePanel();return true;}return false;});
+                  ViewCompat.setOnApplyWindowInsetsListener(frame,(v,insets)->{
                       int top=insets.getInsets(WindowInsetsCompat.Type.systemBars()).top;
                       int bottom=Math.max(insets.getInsets(WindowInsetsCompat.Type.systemBars()).bottom,insets.getInsets(WindowInsetsCompat.Type.ime()).bottom);
-                      int available=Math.max(dp(100),display().heightPixels-top-bottom-dp(32));
-                      int height=Math.min(desiredHeight[0],available);
-                      if (lp.height!=height) { lp.height=height; if (panel==frame) try { windows.updateViewLayout(frame,lp); } catch (RuntimeException ignored) { } }
+                      int available=Math.max(dp(100),display().heightPixels-top-bottom);
+                      int height=Math.min(dp(750),available);
+                      if(lp.height!=height&&panel==frame){lp.height=height;try{windows.updateViewLayout(frame,lp);}catch(RuntimeException ignored){}}
                       return insets;
                   });
-                  fullscreen.setOnClickListener(view -> {
-                      expanded[0]=!expanded[0];
-                      lp.width=expanded[0] ? display().widthPixels-dp(16) : Math.min(dp(380), display().widthPixels-dp(24));
-                      desiredHeight[0]=expanded[0] ? display().heightPixels-dp(48) : Math.min(dp(640),display().heightPixels-dp(80)); lp.height=desiredHeight[0];
-                      scroll.setFillViewport(expanded[0]); fullscreen.setText(expanded[0] ? "⊡" : "⛶"); fullscreen.setContentDescription(tr(expanded[0] ? "Restore compact popup" : "Expand quick capture to fullscreen"));
-                      try { windows.updateViewLayout(frame,lp); ViewCompat.requestApplyInsets(frame); } catch (RuntimeException e) { error.setVisibility(View.VISIBLE); error.setText(tr("Could not resize popup.")); }
-                      if (motionEnabled()) { frame.setAlpha(.65f); frame.animate().alpha(1).setDuration(160).start(); }
-                  });
-                  close.setOnClickListener(view -> collapsePanel());
-                  pencil.setOnClickListener(view -> { amountLabel.setVisibility(View.GONE); amount.setVisibility(View.VISIBLE); amount.requestFocus(); amount.post(() -> ((InputMethodManager) getSystemService(INPUT_METHOD_SERVICE)).showSoftInput(amount, InputMethodManager.SHOW_IMPLICIT)); });
-                  delete.setOnClickListener(view -> {
-                      delete.setEnabled(false);
-                      try {
-                          SmsStore.complete(this,SmsStore.key(item),null);
-                          hidePanel(); updateOverlay();
-                      } catch (RuntimeException e) {
-                          delete.setEnabled(true); error.setVisibility(View.VISIBLE); error.setText(tr("Could not dismiss this payment. Try again."));
-                      }
-                  });
-                  later.setOnClickListener(view -> { if (item.optBoolean("demo")) { try { SmsStore.complete(this, SmsStore.key(item), null); } catch (RuntimeException e) { error.setVisibility(View.VISIBLE); error.setText(tr("Could not dismiss preview. Try again.")); return; } } else deferredPayments.add(SmsStore.key(item)); hidePanel(); updateOverlay(); Toast.makeText(this, tr(item.optBoolean("demo") ? "Preview complete. No expense was added." : "Saved for later in Review"), Toast.LENGTH_SHORT).show(); });
-                  save.setOnClickListener(view -> {
+                  try{
+                      captureEntry=new CaptureEntryView(this,captureState(item),(message,reply)->{
+                          if(panel==frame)handleCaptureAction(frame,item,message,reply);
+                      });
+                      frame.addView(captureEntry,new LinearLayout.LayoutParams(-1,-1));
+                      windows.addView(frame,lp);panel=frame;ViewCompat.requestApplyInsets(frame);
+                  }catch(Exception e){releaseCaptureEntry();panelKey=null;updateOverlay();}
+              }
+              private void handleCaptureAction(LinearLayout frame,JSONObject item,JSONObject message,CaptureEntryView.Reply reply){
+                  String action=message.optString("action");
+                  String key=SmsStore.key(item);
+                  boolean demo=item.optBoolean("demo");
+                  try{
+                      if("close".equals(action)){collapsePanel();return;}
                       if(UpdatePush.required(this)>0){showRequiredUpdate(item);return;}
-                      if (item.optBoolean("demo")) {
-                          try { SmsStore.complete(this, SmsStore.key(item), null); hidePanel(); updateOverlay(); Toast.makeText(this, tr("Preview complete. No expense was added."), Toast.LENGTH_SHORT).show(); } catch (RuntimeException e) { error.setVisibility(View.VISIBLE); error.setText(tr("Could not finish preview. Try again.")); } return;
+                      if("picture".equals(action)){pickCapturePhoto(frame,message.optString("source"),reply);return;}
+                      if("addCategory".equals(action)){
+                          if(demo){reply.success();return;}
+                          if(!CaptureCatalog.add(this,message.optString("type"),message.optString("name"))){
+                              reply.error("Choose a unique category name (up to 40 characters).");return;
+                          }
+                          reply.success();return;
                       }
-                      double value;
-                      try { value = Double.parseDouble(amount.getText().toString().trim()); } catch (NumberFormatException e) { value = 0; }
-                      if (value <= 0 || Double.isNaN(value) || Double.isInfinite(value)) { error.setVisibility(View.VISIBLE); error.setText(tr("Enter an amount greater than zero.")); return; }
-                      if (category[0] == null) category[0] = "Uncategorised";
-                      String who = person.getText().toString().trim();
-                      if ((type[0].equals("Lent") || type[0].equals("Borrowed")) && who.isEmpty()) { error.setVisibility(View.VISIBLE); error.setText(tr("Add the person's name.")); person.requestFocus(); return; }
-                      if (SmsStore.requiresReview(this,item)) { showPanel(item); return; }
-                      save.setEnabled(false);
-                      try {
-                          JSONObject entry = new JSONObject().put("t", type[0]).put("a", value).put("note",comment.getText().toString().trim()).put("c", category[0]).put("m", details.merchant).put("who", who).put("ts", item.optLong("ts", System.currentTimeMillis())).put("settled", 0).put("smsFrom", item.optString("from")).put("smsBody", item.optString("body"));
-                          if(!photo[0].isEmpty())entry.put("photo",photo[0]);
-                          if("Expense".equals(type[0])){if(!subscriptionId[0].isEmpty())entry.put("subscriptionId",subscriptionId[0]);if(linkedEmiIndex[0]>=0)entry.put("emiPlanIndex",linkedEmiIndex[0]).put("emiPlanName",linkedEmiName[0]);}
-                          boolean saved = SmsStore.complete(this, SmsStore.key(item), entry);
-                          hidePanel(); updateOverlay();
-                          Toast.makeText(this, tr(saved ? "Good job! Payment logged." : "This payment was already handled"), Toast.LENGTH_SHORT).show();
-                      } catch (Exception e) { save.setEnabled(true); error.setVisibility(View.VISIBLE); error.setText(tr("Could not save. Check free storage and try again.")); }
-                  });
-                  windows.addView(frame, lp); panel = frame; ViewCompat.requestApplyInsets(frame);
-                  if (motionEnabled()) { frame.setAlpha(0); frame.setScaleX(.94f); frame.setScaleY(.94f); frame.setTranslationY(dp(22)); frame.animate().alpha(1).scaleX(1).scaleY(1).translationY(0).setDuration(240).setInterpolator(new OvershootInterpolator(.6f)).start(); }
+                      if("later".equals(action)){
+                          if(demo)SmsStore.complete(this,key,null);else deferredPayments.add(key);
+                      }else if("delete".equals(action)){
+                          SmsStore.complete(this,key,null);
+                      }else if("openApp".equals(action)&&!demo){
+                          openCaptureInApp(item,message.optJSONObject("entry"),message.optString("planning"));return;
+                      }else if("save".equals(action)){
+                          if(demo){
+                              SmsStore.complete(this,key,null);
+                              Toast.makeText(this,tr("Preview complete. No expense was added."),Toast.LENGTH_SHORT).show();
+                          }else{
+                              if(SmsStore.requiresReview(this,item)){openCaptureInApp(item,message.optJSONObject("entry"),"");return;}
+                              JSONObject entry=captureRecord(item,message.getJSONObject("entry"),reply);
+                              if(entry==null)return;
+                              boolean saved=SmsStore.complete(this,key,entry);
+                              Toast.makeText(this,tr(saved?"Good job! Payment logged.":"This payment was already handled"),Toast.LENGTH_SHORT).show();
+                          }
+                      }else{reply.error("Could not save. Try again.");return;}
+                      reply.success();hidePanel();updateOverlay();
+                  }catch(Exception e){reply.error("Could not save. Try again.");}
+              }
+              private JSONObject captureRecord(JSONObject item,JSONObject draft,CaptureEntryView.Reply reply) throws org.json.JSONException{
+                  String type=draft.optString("type"),category=draft.optString("category"),who=draft.optString("who").trim();
+                  double amount=draft.optDouble("amount");
+                  if(!Double.isFinite(amount)||amount<=0){reply.error("Enter an amount greater than zero.");return null;}
+                  if(!java.util.Arrays.asList("Expense","Income","Lent","Borrowed").contains(type))return null;
+                  if(("Lent".equals(type)||"Borrowed".equals(type))&&who.isEmpty()){reply.error("Add the person's name.");return null;}
+                  if(!CaptureCatalog.labels(this,type).contains(category))category="Uncategorised";
+                  String note=draft.optString("note").trim(),photo=draft.optString("photo");
+                  JSONObject entry=new JSONObject().put("t",type).put("a",amount).put("c",category)
+                      .put("note",note.substring(0,Math.min(300,note.length()))).put("who",who.substring(0,Math.min(60,who.length())))
+                      .put("m",PaymentParser.parse(item).merchant).put("settled",0)
+                      .put("ts",item.optLong("ts",System.currentTimeMillis())).put("smsFrom",item.optString("from")).put("smsBody",item.optString("body"));
+                  String account=draft.optString("account");
+                  if(!account.isEmpty()&&account.length()<=60)entry.put("acc",account);
+                  if(photo.length()<=180000&&photo.matches("^data:image/(?:jpeg|png|webp);base64,[A-Za-z0-9+/]+={0,2}$"))entry.put("photo",photo);
+                  if("Expense".equals(type)){
+                      int emiIndex=draft.optInt("emiIndex",-1);
+                      if(emiIndex>=0){entry.put("emiPlanIndex",emiIndex).put("emiPlanName",draft.optString("emiName"));}
+                      else{
+                          String subscriptionId=draft.optString("subscriptionId");
+                          if(subscriptionId.matches("[a-zA-Z0-9_-]{1,80}"))entry.put("subscriptionId",subscriptionId);
+                      }
+                  }
+                  return entry;
+              }
+              private void pickCapturePhoto(LinearLayout frame,String source,CaptureEntryView.Reply reply){
+                  if(capturePhotoOpen||(!"camera".equals(source)&&!"browse".equals(source))){reply.error("Could not attach this picture.");return;}
+                  final boolean[] pickerStarted={false},settled={false};
+                  Runnable launchTimeout=()->{
+                      if(settled[0]||pickerStarted[0]||panel!=frame)return;
+                      settled[0]=true;capturePhotoOpen=false;reply.error("Could not attach this picture.");
+                  };
+                  android.os.ResultReceiver receiver=new android.os.ResultReceiver(main){
+                      @Override protected void onReceiveResult(int result,android.os.Bundle payload){
+                          if(settled[0]||panel!=frame)return;
+                          main.removeCallbacks(launchTimeout);
+                          if(result==3){
+                              pickerStarted[0]=true;frame.setVisibility(View.INVISIBLE);return;
+                          }
+                          settled[0]=true;capturePhotoOpen=false;
+                          frame.setVisibility(View.VISIBLE);ViewCompat.requestApplyInsets(frame);
+                          if(result==1)reply.send("photo",payload.getString("photo",""));
+                          else if(result==2)reply.error("Could not attach this picture.");
+                          else reply.success();
+                      }
+                  };
+                  ((InputMethodManager)getSystemService(INPUT_METHOD_SERVICE)).hideSoftInputFromWindow(frame.getWindowToken(),0);
+                  try{
+                      capturePhotoOpen=true;
+                      startActivity(CapturePhotoActivity.launch(this,source,receiver));
+                      main.postDelayed(launchTimeout,8000);
+                  }catch(RuntimeException e){
+                      settled[0]=true;capturePhotoOpen=false;reply.error("Could not attach this picture.");
+                  }
+              }
+              private void releaseCaptureEntry(){
+                  if(captureEntry==null)return;
+                  android.view.ViewParent parent=captureEntry.getParent();
+                  if(parent instanceof LinearLayout)((LinearLayout)parent).removeView(captureEntry);
+                  captureEntry.stopLoading();captureEntry.destroy();captureEntry=null;capturePhotoOpen=false;
               }
               private void collapsePanel() {
                   if (panel == null) return;
@@ -1545,11 +1506,11 @@ jobs:
                       panel.animate().cancel();
                       ((InputMethodManager) getSystemService(INPUT_METHOD_SERVICE)).hideSoftInputFromWindow(panel.getWindowToken(), 0);
                       try { windows.removeView(panel); } catch (RuntimeException ignored) { }
-                      panel = null; panelKey = null;
+                      panel = null; panelKey = null;releaseCaptureEntry();
                   }
               }
               private void hideAll() { hidePanel(); hideBubble(); }
-              @Override public void onConfigurationChanged(Configuration config) { super.onConfigurationChanged(config); hideAll(); updateOverlay(); }
+              @Override public void onConfigurationChanged(Configuration config) { super.onConfigurationChanged(config); if(!capturePhotoOpen){hideAll();updateOverlay();} }
               @Override public void onDestroy() {
                   main.removeCallbacksAndMessages(null); hideAll();
                   if (screenReceiver != null) { try { unregisterReceiver(screenReceiver); } catch (RuntimeException ignored) { } }
@@ -1588,7 +1549,9 @@ jobs:
           activity = next((node for node in app.findall('activity') if node.get(a + 'name', '').endswith('MainActivity')), None)
           assert activity is not None, 'Cannot find the main activity'
           activity.set(a + 'enableOnBackInvokedCallback', 'true')
-          ET.SubElement(app, 'activity', {a + 'name': '.CapturePhotoActivity', a + 'exported': 'false', a + 'theme': '@android:style/Theme.Translucent.NoTitleBar', a + 'taskAffinity': 'com.quickspend.app.capturePhoto', a + 'excludeFromRecents': 'true'})
+          ET.SubElement(app, 'activity', {a + 'name': '.CapturePhotoActivity', a + 'exported': 'false', a + 'theme': '@android:style/Theme.Translucent.NoTitleBar', a + 'taskAffinity': 'com.quickspend.app.capturePhoto', a + 'excludeFromRecents': 'true', a + 'configChanges': 'orientation|screenSize|keyboardHidden'})
+          provider = ET.SubElement(app, 'provider', {a + 'name': 'com.quickspend.app.CapturePhotoActivity$Provider', a + 'authorities': 'com.quickspend.app.capturephotos', a + 'exported': 'false', a + 'grantUriPermissions': 'true'})
+          ET.SubElement(provider, 'meta-data', {a + 'name': 'android.support.FILE_PROVIDER_PATHS', a + 'resource': '@xml/qs_capture_photo_paths'})
           if not any(node.get(a + 'name') == 'android.intent.action.SEND' for node in activity.findall('./intent-filter/action')):
               f = ET.SubElement(activity, 'intent-filter')
               ET.SubElement(f, 'action', {a + 'name': 'android.intent.action.SEND'})
@@ -1798,6 +1761,8 @@ jobs:
           activity = next(node for node in root.find('application').findall('activity') if node.get(ns + 'name', '').endswith('MainActivity'))
           picker = next(node for node in root.find('application').findall('activity') if node.get(ns + 'name', '').endswith('CapturePhotoActivity'))
           assert picker.get(ns + 'exported') == 'false', 'Photo picker must remain private'
+          provider = next(node for node in root.find('application').findall('provider') if node.get(ns + 'authorities') == 'com.quickspend.app.capturephotos')
+          assert provider.get(ns + 'exported') == 'false' and provider.get(ns + 'grantUriPermissions') == 'true', 'Camera provider scope is incorrect'
           assert activity.get(ns + 'enableOnBackInvokedCallback') == 'true', 'Predictive Back support missing'
           receivers = root.find('application').findall('receiver')
           assert len([r for r in receivers if 'QsWidgets$' in r.get(ns + 'name', '')]) == 3, 'Three widgets must be packaged'

@@ -2,7 +2,7 @@ const fs=require('fs'),path=require('path'),assert=require('assert'),{app,settle
 (async()=>{
  const a=app({savedLanguage:'en'});await settle();
  const workflow=fs.readFileSync(path.join(__dirname,'../.github/workflows/build.yml'),'utf8');
- assert.match(workflow,/deferredPayments\.add\(SmsStore\.key\(item\)\); hidePanel\(\); updateOverlay\(\)/,'Later advances the floater to the next waiting payment');
+ assert.match(workflow,/deferredPayments\.add\(key\);[\s\S]*?reply\.success\(\);hidePanel\(\);updateOverlay\(\)/,'Later advances the floater to the next waiting payment');
  assert.match(workflow,/!deferredPayments\.contains\(SmsStore\.key\(item\)\)/,'Deferred floater payments remain in Review without hiding the rest');
  a.eval("tx=[];pending=[];recur=[];view='All';openSheet({manual:true,m:'Manual entry',a:125});cur.note='Lunch with family';adding='cat';$('#nb').value='Eating out';commit()");
  assert.match(a.nodes.get('#sheet').innerHTML,/onclick="closeSheet\(\)">Discard<\/button>/,'Manual New entry has a red discard action');
