@@ -668,5 +668,8 @@
   "Update QuickSpend to keep using the app.": "ऐप इस्तेमाल करने के लिए QuickSpend अपडेट करें।",
   "Could not attach this picture.": "यह फ़ोटो नहीं जुड़ सकी।",
   "Camera": "कैमरा",
-  "Browse": "फ़ोटो चुनें"
+  "Browse": "फ़ोटो चुनें",
+  "Partially paid": "आंशिक भुगतान",
+  "Waiting to sync. Your records are saved on this phone.": "सिंक का इंतज़ार है। आपके रिकॉर्ड इस फ़ोन पर सुरक्षित हैं।",
+  "Enter a positive amount with up to two decimal places.": "दो दशमलव स्थान तक की धनात्मक राशि दर्ज करें।"
 }
