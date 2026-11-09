@@ -21,11 +21,16 @@ public class UpdateBridgePlugin extends Plugin {
         final boolean manual=Boolean.TRUE.equals(call.getBoolean("manual",false));
         manager.getAppUpdateInfo().addOnSuccessListener(info->{
             boolean downloaded=info.installStatus()==InstallStatus.DOWNLOADED;
-            long version=info.availableVersionCode();
+            long version=info.availableVersionCode(),required=UpdatePush.recordAvailability(getContext(),info);
             JSObject result=new JSObject();result.put("available",info.updateAvailability()==UpdateAvailability.UPDATE_AVAILABLE&&version>UpdatePush.installed(getContext()));
-            result.put("versionCode",version);result.put("downloaded",downloaded);result.put("flexible",info.isUpdateTypeAllowed(AppUpdateType.FLEXIBLE));result.put("installStatus",info.installStatus());
+            result.put("required",required>0);result.put("versionCode",required>0?required:version);result.put("downloaded",downloaded);result.put("flexible",info.isUpdateTypeAllowed(AppUpdateType.FLEXIBLE));result.put("installStatus",info.installStatus());
             result.put("promptAllowed",UpdatePolicy.prompt(version,UpdatePush.prefs(getContext()).getLong("dismissed",0),System.currentTimeMillis(),UpdatePush.prefs(getContext()).getLong("dismissed_at",0),manual));call.resolve(result);
-        }).addOnFailureListener(error->call.reject("Could not check updates. Open Google Play to check.",error));
+        }).addOnFailureListener(error->{
+            long required=UpdatePush.required(getContext());
+            if(required==0){call.reject("Could not check updates. Open Google Play to check.",error);return;}
+            JSObject result=new JSObject();result.put("available",true);result.put("downloaded",false);
+            result.put("required",true);result.put("versionCode",required);result.put("promptAllowed",true);call.resolve(result);
+        });
     }
     @PluginMethod public void dismiss(PluginCall call){long version=call.getInt("versionCode",0).longValue();UpdatePush.prefs(getContext()).edit().putLong("dismissed",version).putLong("dismissed_at",System.currentTimeMillis()).apply();call.resolve();}
     @PluginMethod public void start(PluginCall call){getActivity().runOnUiThread(()->manager.getAppUpdateInfo().addOnSuccessListener(info->{

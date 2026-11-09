@@ -525,7 +525,7 @@
   "Remove voice note": "वॉइस नोट हटाएँ",
   "Remove picture": "तस्वीर हटाएँ",
   "Attached picture": "जुड़ी तस्वीर",
-  "Picture attached": "तस्वीर जुड़ गई",
+  "Picture attached": "फ़ोटो जुड़ गई",
   "Picture": "तस्वीर",
   "Note attachments": "नोट की फ़ाइलें",
   "Keep voice notes under 30 seconds.": "वॉइस नोट 30 सेकंड से छोटा रखें।",
@@ -654,5 +654,17 @@
   "Test floater": "फ्लोटर आज़माएँ",
   "Try the icon and category tags with a sample payment.": "नमूना भुगतान से आइकन और श्रेणी टैग आज़माएँ।",
   "Test the floater in the Android app.": "Android ऐप में फ्लोटर आज़माएँ।",
-  "Demo ready. Switch to another app within two minutes. Tap the floater to see the category icons, or hold it if Quick Access is on.": "डेमो तैयार है। दो मिनट के भीतर दूसरे ऐप पर जाएँ। श्रेणी आइकन देखने के लिए फ्लोटर पर टैप करें या क्विक एक्सेस चालू होने पर दबाकर रखें।"
+  "Demo ready. Switch to another app within two minutes. Tap the floater to see the category icons, or hold it if Quick Access is on.": "डेमो तैयार है। दो मिनट के भीतर दूसरे ऐप पर जाएँ। श्रेणी आइकन देखने के लिए फ्लोटर पर टैप करें या क्विक एक्सेस चालू होने पर दबाकर रखें।",
+  "Matte dark": "मैट डार्क",
+  "Flat charcoal surfaces": "मैट चारकोल रंग",
+  "Category picker": "श्रेणी चयन",
+  "Change category": "श्रेणी बदलें",
+  "General": "सामान्य",
+  "My categories": "मेरी श्रेणियाँ",
+  "Create a category": "नई श्रेणी बनाएँ",
+  "Budget and subscriptions": "बजट और सदस्यताएँ",
+  "Good job! Payment logged.": "बहुत बढ़िया! भुगतान दर्ज हुआ।",
+  "Update required": "अपडेट ज़रूरी है",
+  "Update QuickSpend to keep using the app.": "ऐप इस्तेमाल करने के लिए QuickSpend अपडेट करें।",
+  "Could not attach this picture.": "यह फ़ोटो नहीं जुड़ सकी।"
 }
