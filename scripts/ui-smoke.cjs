@@ -33,6 +33,9 @@ const {chromium}=require(process.env.PLAYWRIGHT_MODULE||'playwright'),assert=req
  assert.equal(await page.getByRole('button',{name:'+ Add new EMI',exact:true}).count(),0,'Collapsed plans are excluded from keyboard/accessibility navigation');
  assert.equal(await page.locator('#sheet .entry-emi:not(.entry-subscriptions)').evaluate(el=>el.open),false,'EMI starts collapsed');assert.equal(await page.getByRole('button',{name:'+ Add new EMI',exact:true}).isVisible(),false);await page.locator('#sheet .entry-emi:not(.entry-subscriptions) summary').click();await page.waitForFunction(()=>cur.emiExpanded);assert.equal(await page.locator('#sheet .entry-emi:not(.entry-subscriptions)').evaluate(el=>el.open),true);
  assert.equal(await page.getByText('Existing EMI',{exact:true}).count(),0);assert.equal(await page.locator('#sheet .entry-emi:not(.entry-subscriptions) .emi-entry-plans').getByRole('button',{name:/Car EMI test/}).count(),1);
+ await page.getByRole('button',{name:'Add picture',exact:true}).click();
+ assert.equal(await page.getByRole('button',{name:'Camera',exact:true}).count(),1);
+ assert.equal(await page.getByRole('button',{name:'Browse',exact:true}).count(),1);
  await page.locator('#note-picture').setInputFiles({name:'receipt.png',mimeType:'image/png',buffer:fs.readFileSync('assets/quickspend-icon.png')});
  await page.waitForFunction(()=>!!cur.photo&&!noteBusy);
  await page.getByRole('button',{name:'+ Add new EMI',exact:true}).click();await page.waitForFunction(()=>!!emiEntryReturn);await page.evaluate(()=>window.quickSpendSystemBack());await page.waitForFunction(()=>!emiEntryReturn&&!!document.querySelector('#note-picture'));assert.equal(await page.evaluate(()=>!!cur.photo&&cur.a===25),true);
@@ -69,6 +72,9 @@ const {chromium}=require(process.env.PLAYWRIGHT_MODULE||'playwright'),assert=req
  const cardX=cardBounds.x+cardBounds.width/2,cardY=cardBounds.y+cardBounds.height/2;
  await page.mouse.move(cardX,cardY);await page.mouse.down();await page.mouse.move(cardX-80,cardY,{steps:4});await page.mouse.up();
  await page.locator('#s-home .subscription-shortcut[aria-pressed="true"]').waitFor();
+ assert.equal(await page.locator('#s-home .planning-nav button').first().innerText(),'Subscriptions');
+ const subBounds=await page.locator('#s-home .planning-hero').boundingBox();
+ assert.ok(Math.abs(subBounds.height-cardBounds.height)<1,'Budget and Subscription summaries use the same height');
  await page.getByRole('button',{name:'Budget',exact:true}).and(page.locator('.planning-nav button')).click();
  await page.locator('#s-home .budget-card-empty').scrollIntoViewIfNeeded();await page.screenshot({animations:'disabled',path:'ui-smoke-output/budget-empty-dark.png'});const gear=await page.locator('#s-home .profile-settings').boundingBox(),gearSvg=await page.locator('#s-home .profile-settings svg').boundingBox();assert.ok(Math.abs(gear.width-40)<1&&Math.abs(gear.height-40)<1,'Gear button remains square');assert.ok(Math.abs(gearSvg.width-20)<1&&Math.abs(gearSvg.height-20)<1,'Gear SVG remains square');const gearPath=await page.locator('#s-home .profile-settings svg path').evaluate(el=>{const r=el.getBBox();return {x:r.x+r.width/2,y:r.y+r.height/2}});assert.ok(Math.abs(gearPath.x-12)<.01&&Math.abs(gearPath.y-12)<.01,'Gear outline is centred on its hub');assert.ok(Math.abs(gear.x+gear.width/2-gearSvg.x-gearSvg.width/2)<1&&Math.abs(gear.y+gear.height/2-gearSvg.y-gearSvg.height/2)<1,'Gear is centred');
  await page.evaluate(()=>{document.querySelector('#profile-name').textContent='A very long account profile name that should never shrink the settings button';colorMode='light';applyColorMode()});const longGear=await page.locator('#s-home .profile-settings').boundingBox();assert.ok(Math.abs(longGear.width-40)<1&&Math.abs(longGear.height-40)<1);await page.screenshot({animations:'disabled',path:'ui-smoke-output/budget-empty-light.png'});
@@ -153,6 +159,41 @@ const {chromium}=require(process.env.PLAYWRIGHT_MODULE||'playwright'),assert=req
  await page.evaluate(()=>{appUpdate.info=null;renderUpdateBanner();closeSheet(false)});
  await page.evaluate(()=>{ob=0;showOb()});assert.equal(await page.locator('#onb img').count(),0);await page.screenshot({animations:'disabled',path:'ui-smoke-output/setup.png'});
  const overflow=await page.locator('#onb').evaluate(el=>el.scrollWidth>el.clientWidth+1);assert.equal(overflow,false,'Setup must fit phone width');assert.deepEqual(errors,[]);
+ const overlay=await browser.newPage({viewport:{width:390,height:650}});
+ const overlayErrors=[];overlay.on('pageerror',e=>overlayErrors.push(e.message));
+ const stubPhoto='data:image/png;base64,'+fs.readFileSync('assets/quickspend-icon.png').toString('base64');
+ await overlay.addInitScript(photo=>{
+  window.captureActions=[];
+  window.QuickCapture={postMessage(raw){
+   const request=JSON.parse(raw);captureActions.push(request);
+   const reply={id:request.id,status:'ok'};
+   if(request.action==='picture'&&request.source==='browse')reply.photo=photo;
+   queueMicrotask(()=>QuickCapture.onmessage({data:JSON.stringify(reply)}))
+  }}
+ },stubPhoto);
+ await overlay.goto('file://'+path.join(process.cwd(),'index.html'));
+ await overlay.evaluate(()=>initialiseCapture({
+  payment:{id:1,m:'Capture test',a:75,kind:'Expense',acc:'Main account',demo:true},language:'en',colorMode:'dark',
+  categoryPicker:true,accounts:[{n:'Main account',i:'🏦'},{n:'Cash',i:'👛'}],people:[],
+  categories:{},customCategories:{},emiPlans:[{index:3,name:'Car loan',left:5,a:400}],subscriptions:[{id:'sub1',name:'Example',status:'active',cents:19900}]
+ }));
+ await overlay.getByRole('button',{name:'Change category',exact:true}).click();
+ await overlay.getByRole('button',{name:'Food',exact:true}).click();
+ await overlay.getByRole('textbox',{name:'Comment'}).fill('Keep this draft');
+ await overlay.getByRole('button',{name:'Add picture',exact:true}).click();
+ await overlay.getByRole('button',{name:'Camera',exact:true}).click();
+ await overlay.waitForFunction(()=>!noteBusy);
+ assert.equal(await overlay.getByRole('textbox',{name:'Comment'}).inputValue(),'Keep this draft','Cancelled camera returns to the same draft');
+ await overlay.getByRole('button',{name:'Browse',exact:true}).click();
+ await overlay.locator('.note-attachment img').waitFor();
+ await overlay.locator('.entry-subscriptions summary').click();
+ await overlay.getByRole('button',{name:/Example/}).click();
+ await overlay.screenshot({animations:'disabled',path:'ui-smoke-output/shared-floater-entry.png'});
+ await overlay.getByRole('button',{name:'Finish test',exact:true}).click();
+ await overlay.waitForFunction(()=>captureActions.some(x=>x.action==='save'));
+ const sent=await overlay.evaluate(()=>captureActions.find(x=>x.action==='save').entry);
+ assert.equal(sent.note,'Keep this draft');assert.equal(sent.subscriptionId,'sub1');assert.equal(sent.photo,stubPhoto);
+ assert.deepEqual(overlayErrors,[]);await overlay.close();
  console.log('PASS: Chromium history search/filter/edit routes, navigation scroll reset, text-only setup, Insights cleanup, dark/light screenshots real photo compression/save/removal and recording-control absence and no runtime errors');
  }finally{await browser.close()}
 })().catch(e=>{console.error(e);process.exit(1)});

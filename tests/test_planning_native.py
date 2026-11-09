@@ -21,7 +21,7 @@ class PlanningManifestTest(unittest.TestCase):
    root=ET.parse(ROOT/'native/res/drawable'/f'{name}.xml').getroot()
    self.assertEqual(root.tag,'vector');self.assertEqual(root.get(a+'viewportWidth'),'28')
    self.assertTrue(root.findall('.//path'));self.assertTrue(all(p.get(a+'pathData') for p in root.findall('.//path')))
-  build=(ROOT/'.github/workflows/build.yml').read_text();self.assertIn('CategorySymbols.drawable(this,label)',build);self.assertNotIn('categoryIcon(String',build)
+  build=(ROOT/'.github/workflows/build.yml').read_text();self.assertIn('CategorySymbols.draw', (ROOT/'native/QuickAccessOverlay.java').read_text());self.assertIn('new CaptureEntryView(this,captureState(item)',build);self.assertNotIn('categoryIcon(String',build)
  def test_no_payment_engine_in_native_reminder(self):
   source=(ROOT/'native/PlanningBridge.java').read_text()
   self.assertNotIn('SmsStore.complete',source);self.assertNotIn('setExact',source);self.assertIn('stamp',source);self.assertIn('setAndAllowWhileIdle',source)
