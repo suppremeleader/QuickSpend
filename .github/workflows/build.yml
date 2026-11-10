@@ -1848,8 +1848,8 @@ jobs:
               launcher = Path('assets/quickspend-frog-1095.webp').read_bytes()
               assert archive.read('base/assets/public/assets/quickspend-frog-1095.webp') == launcher, 'Packaged web launcher artwork differs from source'
               assert any(n.endswith('/qs_launcher_icon.webp') for n in archive.namelist()), 'Native frog launcher artwork missing'
-                assert any(n.endswith('/qs_brand_icon.webp') and archive.read(n) == launcher for n in archive.namelist()), 'Packaged native floater does not match the new frog icon'
-                assert any(n.endswith('/qs_launcher_icon.webp') and archive.read(n) == launcher for n in archive.namelist()), 'Packaged native launcher does not match the new frog icon'
+              assert any(n.endswith('/qs_brand_icon.webp') and archive.read(n) == launcher for n in archive.namelist()), 'Packaged native floater does not match the new frog icon'
+              assert any(n.endswith('/qs_launcher_icon.webp') and archive.read(n) == launcher for n in archive.namelist()), 'Packaged native launcher does not match the new frog icon'
               for name in ('ic_launcher.xml', 'ic_launcher_round.xml'):
                   assert f'base/res/mipmap-anydpi-v26/{name}' in archive.namelist(), f'Adaptive launcher resource missing: {name}'
               html = archive.read('base/assets/public/index.html').decode()
