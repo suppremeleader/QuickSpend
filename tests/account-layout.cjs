@@ -12,6 +12,14 @@ function backend({existing=null,failUpload=false}={}){let user=null,remote=exist
  const existing={revision:3,payload:JSON.stringify({app:'quickspend',v:1,tx:[{id:90,t:'Income',a:500,c:'Salary',m:'Work',ts:Date.now()}],pending:[],accts:[],speed:[],recur:[],memory:{},cats:[],budgets:{}})};b=backend({existing});a=app({savedLanguage:'en',accountApi:b.api});await settle();await a.c.googleSignIn();assert.equal(b.uploads,0,'Existing backup must not be overwritten on login');assert.equal(a.eval('cloud.ready'),false);await a.c.restoreCloud();assert.equal(a.eval('tx[0].a'),500);assert.equal(a.eval('cloud.revision'),3);assert.equal(a.eval('cloud.enabled'),true);
  await a.c.signOutAccount();assert.equal(a.eval('cloud.account'),null);assert.equal(a.eval('cloud.enabled'),false);assert.equal(a.eval('tx.length'),1,'Sign out must retain local records');
  b=backend({failUpload:true});a=app({savedLanguage:'en',accountApi:b.api});await settle();await a.c.googleSignIn();assert.equal(a.eval('cloud.enabled'),false);assert.equal(a.eval('cloud.lastSaved'),0);assert.match(a.eval('cloud.error'),/another device/);
+ b=backend();a=app({savedLanguage:'en',accountApi:b.api});await settle();await a.c.googleSignIn();
+ assert.equal(a.eval('CLOUD_BACKUP_WATCHDOG_MS'),300000,'Fallback backup check must run every five minutes');
+ assert.equal(a.eval('cloudBackupPending()'),false,'Freshly uploaded ledger is synced');
+ a.eval("tx.push({id:405,t:'Expense',a:45,c:'Food',m:'Test',ts:Date.now()})");
+ assert.equal(a.eval('cloudBackupPending()'),true,'New data must be marked as waiting for backup');
+ await a.c.saveCloudNow(false);
+ assert.equal(a.eval('cloudBackupPending()'),false,'Successful backup clears pending state');
+ assert.equal(JSON.parse(b.remote.payload).tx.some(entry=>entry.id===405),true,'Recent records reach the cloud');
  a=app({savedLanguage:'en'});await settle();assert.ok(!a.nodes.get('#account-setup')?.classList.contains('on'),'Unconfigured build must retain normal offline setup');a.eval('openAccount()');assert.match(a.nodes.get('#sheet').innerHTML,/not available in this build/);
  console.log('PASS: sheet handle drag/cancel/outside dismissal, pinned native footer and IME resizing, Google setup/skip, sanitised backup, login restore decision, duplicate-upload suppression, reset/sign-out safety, conflict pause, unconfigured fallback');
 })().catch(e=>{console.error(e);process.exit(1)});
