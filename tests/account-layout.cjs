@@ -20,6 +20,10 @@ function backend({existing=null,failUpload=false}={}){let user=null,remote=exist
  await a.c.saveCloudNow(false);
  assert.equal(a.eval('cloudBackupPending()'),false,'Successful backup clears pending state');
  assert.equal(JSON.parse(b.remote.payload).tx.some(entry=>entry.id===405),true,'Recent records reach the cloud');
+ a.eval("tx.push({id:406,t:'Expense',a:63,c:'Travel',m:'Bus',ts:Date.now()})");
+ a.c.document.hidden=true;a.documentListeners.visibilitychange();await settle();
+ assert.equal(JSON.parse(b.remote.payload).tx.some(entry=>entry.id===406),true,'Backgrounding attempts to flush pending records');
+ a.c.document.hidden=false;a.documentListeners.visibilitychange();
  a=app({savedLanguage:'en'});await settle();assert.ok(!a.nodes.get('#account-setup')?.classList.contains('on'),'Unconfigured build must retain normal offline setup');a.eval('openAccount()');assert.match(a.nodes.get('#sheet').innerHTML,/not available in this build/);
- console.log('PASS: sheet handle drag/cancel/outside dismissal, pinned native footer and IME resizing, Google setup/skip, sanitised backup, login restore decision, duplicate-upload suppression, reset/sign-out safety, conflict pause, unconfigured fallback');
+ console.log('PASS: sheet handle drag/cancel/outside dismissal, pinned native footer and IME resizing, Google setup/skip, sanitised backup, login restore decision, duplicate-upload suppression, reset/sign-out safety, conflict pause, five-minute dirty-state watchdog, background flush, unconfigured fallback');
 })().catch(e=>{console.error(e);process.exit(1)});

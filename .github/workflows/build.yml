@@ -1,7 +1,7 @@
-name: QuickSpend Frog Play Store Update
+name: QuickSpend Cloud Backup Safeguards
 on:
   push:
-    branches: [codex/frog-play-update-existing-app]
+    branches: [codex/cloud-backup-heartbeat-5min]
   workflow_dispatch:
     inputs:
       version_code:
@@ -1691,7 +1691,7 @@ jobs:
           assert 'distributionSha256Sum=' not in s, 'Update Gradle checksum before changing the wrapper'
           wrapper.write_text(s)
           raw = os.environ.get('INPUT_VERSION_CODE', '').strip()
-          code = int(raw) if raw else max(2000, 1000 + int(os.environ['GITHUB_RUN_NUMBER']))
+          code = int(raw) if raw else max(2001, 1000 + int(os.environ['GITHUB_RUN_NUMBER']))
           assert 0 < code <= 2100000000, 'versionCode must be a positive Android version code'
           version = os.environ.get('INPUT_VERSION_NAME', '').strip() or json.loads(Path('package.json').read_text())['version'] + '.' + os.environ['GITHUB_RUN_NUMBER']
           assert re.fullmatch(r'[A-Za-z0-9._+-]{1,80}', version), 'Invalid version name'
@@ -1868,15 +1868,15 @@ jobs:
           Path('dist/build-evidence.json').write_text(json.dumps(meta, indent=2))
           print('VERIFIED: signed release AAB, API 36, SMS bridge, native floating capture, receiver, permissions and version code.')
           PY_VERIFY
-          cp "$AAB" "dist/quickspend-frog-play-${GITHUB_RUN_NUMBER}.aab"
+          cp "$AAB" "dist/quickspend-cloud-backup-${GITHUB_RUN_NUMBER}.aab"
           APK=android/app/build/outputs/apk/release/app-release.apk
           test -s "$APK"
-          cp "$APK" "dist/quickspend-frog-play-${GITHUB_RUN_NUMBER}.apk"
-          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose "dist/quickspend-frog-play-${GITHUB_RUN_NUMBER}.apk"
-          sha256sum "dist/quickspend-frog-play-${GITHUB_RUN_NUMBER}.aab" "dist/quickspend-frog-play-${GITHUB_RUN_NUMBER}.apk" > dist/SHA256SUMS.txt
+          cp "$APK" "dist/quickspend-cloud-backup-${GITHUB_RUN_NUMBER}.apk"
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose "dist/quickspend-cloud-backup-${GITHUB_RUN_NUMBER}.apk"
+          sha256sum "dist/quickspend-cloud-backup-${GITHUB_RUN_NUMBER}.aab" "dist/quickspend-cloud-backup-${GITHUB_RUN_NUMBER}.apk" > dist/SHA256SUMS.txt
       - uses: actions/upload-artifact@v4
         with:
-          name: quickspend-frog-play-${{ github.run_number }}
+          name: quickspend-cloud-backup-${{ github.run_number }}
           path: dist/
           if-no-files-found: error
           retention-days: 14
