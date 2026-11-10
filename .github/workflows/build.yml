@@ -115,7 +115,7 @@ jobs:
           fi
           mkdir -p www/assets www/locales && cp index.html www/
           cp locales/hi.json www/locales/
-          cp assets/quickspend-icon.png assets/ftue.css www/assets/
+          cp assets/quickspend-icon.png assets/quickspend-launcher.png assets/ftue.css www/assets/
           npm install
           npm install @capacitor/local-notifications@^6.0.0
           if [ ! -d android ]; then npx cap add android; fi
@@ -1625,11 +1625,11 @@ jobs:
           python3 - <<'PY_ICON'
           from pathlib import Path
           import shutil
-          source = Path('assets/quickspend-icon.png')
-          assert source.is_file(), 'Upload the assets folder containing quickspend-icon.png'
           res = Path('android/app/src/main/res')
-          (res / 'drawable-nodpi').mkdir(parents=True, exist_ok=True)
-          shutil.copyfile(source, res / 'drawable-nodpi/qs_brand_icon.png')
+          artwork = res / 'drawable-nodpi'
+          artwork.mkdir(parents=True, exist_ok=True)
+          shutil.copyfile('assets/quickspend-icon.png', artwork / 'qs_brand_icon.png')
+          shutil.copyfile('assets/quickspend-launcher.png', artwork / 'qs_launcher_icon.png')
           # Remove only the generated launcher's old resources to avoid density variants
           # selecting the template icon instead of the approved artwork.
           for folder in res.glob('mipmap-*'):
@@ -1637,7 +1637,7 @@ jobs:
                   for file in folder.glob('ic_launcher*'):
                       if file.is_file():
                           file.unlink()
-          bitmap = '<bitmap xmlns:android="http://schemas.android.com/apk/res/android" android:src="@drawable/qs_brand_icon" android:gravity="fill" android:filter="true" />'
+          bitmap = '<bitmap xmlns:android="http://schemas.android.com/apk/res/android" android:src="@drawable/qs_launcher_icon" android:gravity="fill" android:filter="true" />'
           legacy = res / 'mipmap-anydpi'
           legacy.mkdir(parents=True, exist_ok=True)
           for name in ('ic_launcher.xml', 'ic_launcher_round.xml'):
@@ -1648,12 +1648,14 @@ jobs:
           for name in ('ic_launcher.xml', 'ic_launcher_round.xml'):
               (adaptive / name).write_text(icon)
           (res / 'drawable').mkdir(parents=True, exist_ok=True)
-          (res / 'drawable/qs_icon_foreground.xml').write_text(bitmap)
+          # Place the full artwork in the 72 dp viewport of the 108 dp adaptive layer.
+          inset = '<inset xmlns:android="http://schemas.android.com/apk/res/android" android:inset="16.6667%">' + bitmap + '</inset>'
+          (res / 'drawable/qs_icon_foreground.xml').write_text(inset)
           (res / 'values').mkdir(parents=True, exist_ok=True)
-          (res / 'values/qs_icon_background.xml').write_text('<resources><color name="qs_icon_background">#09090C</color></resources>')
+          (res / 'values/qs_icon_background.xml').write_text('<resources><color name="qs_icon_background">#3AC007</color></resources>')
           # Android status-bar icons require a monochrome shape, not the full-colour PNG.
           (res / 'drawable/ic_qs_notification.xml').write_text('<vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="24dp" android:height="24dp" android:viewportWidth="128" android:viewportHeight="128"><path android:fillColor="@android:color/transparent" android:strokeColor="#FFFFFFFF" android:strokeWidth="16" android:strokeLineCap="round" android:strokeLineJoin="round" android:pathData="M92,98 A44,44 0,1 0,65 108 M68,77 L108,116"/></vector>')
-          print('Installed approved QuickSpend icon, adaptive launcher resources and monochrome notification symbol')
+          print('Installed frog launcher artwork, adaptive launcher resources and monochrome notification symbol')
           PY_ICON
           grep -q POST_NOTIFICATIONS android/app/src/main/AndroidManifest.xml
           grep -q RECEIVE_SMS android/app/src/main/AndroidManifest.xml
@@ -1841,6 +1843,11 @@ jobs:
               assert any(n.endswith('/qs_brand_icon.png') for n in archive.namelist()), 'Native brand icon missing'
               assert 'base/assets/public/locales/hi.json' in archive.namelist(), 'Hindi translations missing'
               assert 'base/assets/public/assets/quickspend-icon.png' in archive.namelist(), 'Web icon asset missing'
+              launcher = Path('assets/quickspend-launcher.png').read_bytes()
+              assert archive.read('base/assets/public/assets/quickspend-launcher.png') == launcher, 'Packaged web launcher artwork differs from source'
+              assert any(n.endswith('/qs_launcher_icon.png') for n in archive.namelist()), 'Native frog launcher artwork missing'
+              for name in ('ic_launcher.xml', 'ic_launcher_round.xml'):
+                  assert f'base/res/mipmap-anydpi-v26/{name}' in archive.namelist(), f'Adaptive launcher resource missing: {name}'
               html = archive.read('base/assets/public/index.html').decode()
               assert html == Path('index.html').read_text(), 'Packaged app does not match the reviewed source'
               assert 'function subscriptionsPage(' in html and 'function savingsPage(' in html, 'Planning screens missing'
