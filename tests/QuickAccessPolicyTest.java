@@ -38,6 +38,9 @@ public class QuickAccessPolicyTest {
         check(QuickAccessPolicy.slideTarget(0,48,10,48,level,18,false)==level+1,"vertical slide still changes the category");
         check(QuickAccessPolicy.slideTarget(0,0,10,48,level,18,false)==-1,"hold alone cannot select");
         check(QuickAccessPolicy.cancelTarget(200,766,400,800,1),"cancel is under the bottom target");
+        check(QuickAccessPolicy.cancelTarget(140,510,400,800,1,140,510),"near-rail cancel target is actionable");
+        check(!QuickAccessPolicy.cancelTarget(200,766,400,800,1,140,510),"old bottom target cannot silently cancel");
+        check(!QuickAccessPolicy.cancelTarget(140,510,400,800,1,Float.NaN,510),"invalid cancel geometry cannot cancel");
         check(QuickAccessPolicy.slideTarget(-60,48,10,48,level,18,true)==-1,"cancel overrides a selected category");
         check(!QuickAccessPolicy.cancelTarget(200,700,400,800,1),"ordinary rail position cannot cancel");
         check(QuickAccessPolicy.canSave(true,500,100,72,0,50,false,false),"deliberate hold and release");

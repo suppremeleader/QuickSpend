@@ -53,6 +53,13 @@ public final class QuickAccessPolicy {
     public static boolean cancelTarget(float x,float y,float width,float height,float density){
         return width>0&&height>0&&density>0&&Math.abs(x-width/2)<=60*density&&Math.abs(y-(height-34*density))<=24*density;
     }
+    /** Align the quick-access cancel hit area with the on-screen category rail. */
+    public static boolean cancelTarget(float x,float y,float width,float height,float density,float cx,float cy){
+        return density>0&&width>0&&height>0&&Float.isFinite(cx)&&Float.isFinite(cy)
+            &&cx>=0&&cx<=width&&cy>=0&&cy<=height
+            &&Float.isFinite(x)&&Float.isFinite(y)
+            &&Math.abs(x-cx)<=72*density&&Math.abs(y-cy)<=25*density;
+    }
     public static boolean canSave(boolean enabled,long held,float travel,float minTravel,int slot,double amount,boolean locked,boolean cancelled){
         return enabled&&held>=HOLD_MS&&Float.isFinite(travel)&&Float.isFinite(minTravel)&&minTravel>0&&travel>=minTravel&&slot>=0&&slot<10&&Double.isFinite(amount)&&amount>0&&!locked&&!cancelled;
     }
