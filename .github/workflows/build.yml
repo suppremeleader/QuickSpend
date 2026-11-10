@@ -109,13 +109,13 @@ jobs:
           INPUT_VERSION_NAME: ${{ inputs.version_name }}
         run: |
           set -euo pipefail
-          if [ ! -s assets/quickspend-icon.png ]; then
+          if [ ! -s assets/quickspend-frog-1095.webp ]; then
             echo "::error::Missing icon. Upload the assets folder at the repository root along with index.html and .github."
             exit 1
           fi
           mkdir -p www/assets www/locales && cp index.html www/
           cp locales/hi.json www/locales/
-          cp assets/quickspend-icon.png assets/quickspend-launcher.png assets/ftue.css www/assets/
+          cp assets/quickspend-icon.png assets/quickspend-launcher.png assets/quickspend-frog-1095.webp assets/ftue.css www/assets/
           npm install
           npm install @capacitor/local-notifications@^6.0.0
           if [ ! -d android ]; then npx cap add android; fi
@@ -1628,8 +1628,8 @@ jobs:
           res = Path('android/app/src/main/res')
           artwork = res / 'drawable-nodpi'
           artwork.mkdir(parents=True, exist_ok=True)
-          shutil.copyfile('assets/quickspend-icon.png', artwork / 'qs_brand_icon.png')
-          shutil.copyfile('assets/quickspend-launcher.png', artwork / 'qs_launcher_icon.png')
+          shutil.copyfile('assets/quickspend-frog-1095.webp', artwork / 'qs_brand_icon.webp')
+          shutil.copyfile('assets/quickspend-frog-1095.webp', artwork / 'qs_launcher_icon.webp')
           # Remove only the generated launcher's old resources to avoid density variants
           # selecting the template icon instead of the approved artwork.
           for folder in res.glob('mipmap-*'):
@@ -1655,7 +1655,7 @@ jobs:
           (res / 'values/qs_icon_background.xml').write_text('<resources><color name="qs_icon_background">#3AC007</color></resources>')
           # Android status-bar icons require a monochrome shape, not the full-colour PNG.
           (res / 'drawable/ic_qs_notification.xml').write_text('<vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="24dp" android:height="24dp" android:viewportWidth="128" android:viewportHeight="128"><path android:fillColor="@android:color/transparent" android:strokeColor="#FFFFFFFF" android:strokeWidth="16" android:strokeLineCap="round" android:strokeLineJoin="round" android:pathData="M92,98 A44,44 0,1 0,65 108 M68,77 L108,116"/></vector>')
-          print('Installed frog launcher artwork, adaptive launcher resources and monochrome notification symbol')
+          print('Installed matching frog launcher, floating quick-capture and web assets')
           PY_ICON
           grep -q POST_NOTIFICATIONS android/app/src/main/AndroidManifest.xml
           grep -q RECEIVE_SMS android/app/src/main/AndroidManifest.xml
@@ -1840,12 +1840,14 @@ jobs:
                   assert any(cls in data for data in dex), 'Bundle missing native class: ' + cls.decode()
               for method in ('quickAccessSettings', 'setQuickAccessSettings', 'overlayStatus', 'openOverlaySettings', 'setOverlayEnabled', 'testOverlay', 'setLanguage', 'upiCaptureStatus', 'setUpiCapture', 'openUpiNotificationAccess'):
                   assert any(method.encode() + bytes([0]) in data for data in dex), 'Native floating method missing: ' + method
-              assert any(n.endswith('/qs_brand_icon.png') for n in archive.namelist()), 'Native brand icon missing'
+              assert any(n.endswith('/qs_brand_icon.webp') for n in archive.namelist()), 'New frog floater icon missing'
               assert 'base/assets/public/locales/hi.json' in archive.namelist(), 'Hindi translations missing'
               assert 'base/assets/public/assets/quickspend-icon.png' in archive.namelist(), 'Web icon asset missing'
-              launcher = Path('assets/quickspend-launcher.png').read_bytes()
-              assert archive.read('base/assets/public/assets/quickspend-launcher.png') == launcher, 'Packaged web launcher artwork differs from source'
-              assert any(n.endswith('/qs_launcher_icon.png') for n in archive.namelist()), 'Native frog launcher artwork missing'
+              launcher = Path('assets/quickspend-frog-1095.webp').read_bytes()
+              assert archive.read('base/assets/public/assets/quickspend-frog-1095.webp') == launcher, 'Packaged web launcher artwork differs from source'
+              assert any(n.endswith('/qs_launcher_icon.webp') for n in archive.namelist()), 'Native frog launcher artwork missing'
+                assert any(n.endswith('/qs_brand_icon.webp') and archive.read(n) == launcher for n in archive.namelist()), 'Packaged native floater does not match the new frog icon'
+                assert any(n.endswith('/qs_launcher_icon.webp') and archive.read(n) == launcher for n in archive.namelist()), 'Packaged native launcher does not match the new frog icon'
               for name in ('ic_launcher.xml', 'ic_launcher_round.xml'):
                   assert f'base/res/mipmap-anydpi-v26/{name}' in archive.namelist(), f'Adaptive launcher resource missing: {name}'
               html = archive.read('base/assets/public/index.html').decode()
