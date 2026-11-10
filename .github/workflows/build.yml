@@ -1,7 +1,7 @@
-name: QuickSpend Frog Test (separate install)
+name: QuickSpend Frog Play Store Update
 on:
   push:
-    branches: [codex/quickspend-frog-test-separate-install]
+    branches: [codex/frog-play-update-existing-app]
   workflow_dispatch:
     inputs:
       version_code:
@@ -1588,7 +1588,7 @@ jobs:
           assert activity is not None, 'Cannot find the main activity'
           activity.set(a + 'enableOnBackInvokedCallback', 'true')
           ET.SubElement(app, 'activity', {a + 'name': '.CapturePhotoActivity', a + 'exported': 'false', a + 'theme': '@android:style/Theme.Translucent.NoTitleBar', a + 'taskAffinity': 'com.quickspend.app.capturePhoto', a + 'excludeFromRecents': 'true', a + 'configChanges': 'orientation|screenSize|keyboardHidden'})
-          provider = ET.SubElement(app, 'provider', {a + 'name': 'com.quickspend.app.CapturePhotoActivity$Provider', a + 'authorities': 'com.quickspend.app.frogtest.capturephotos', a + 'exported': 'false', a + 'grantUriPermissions': 'true'})
+          provider = ET.SubElement(app, 'provider', {a + 'name': 'com.quickspend.app.CapturePhotoActivity$Provider', a + 'authorities': 'com.quickspend.app.capturephotos', a + 'exported': 'false', a + 'grantUriPermissions': 'true'})
           ET.SubElement(provider, 'meta-data', {a + 'name': 'android.support.FILE_PROVIDER_PATHS', a + 'resource': '@xml/qs_capture_photo_paths'})
           if not any(node.get(a + 'name') == 'android.intent.action.SEND' for node in activity.findall('./intent-filter/action')):
               f = ET.SubElement(activity, 'intent-filter')
@@ -1691,14 +1691,14 @@ jobs:
           assert 'distributionSha256Sum=' not in s, 'Update Gradle checksum before changing the wrapper'
           wrapper.write_text(s)
           raw = os.environ.get('INPUT_VERSION_CODE', '').strip()
-          code = int(raw) if raw else max(1069, 1000 + int(os.environ['GITHUB_RUN_NUMBER']))
+          code = int(raw) if raw else max(2000, 1000 + int(os.environ['GITHUB_RUN_NUMBER']))
           assert 0 < code <= 2100000000, 'versionCode must be a positive Android version code'
           version = os.environ.get('INPUT_VERSION_NAME', '').strip() or json.loads(Path('package.json').read_text())['version'] + '.' + os.environ['GITHUB_RUN_NUMBER']
           assert re.fullmatch(r'[A-Za-z0-9._+-]{1,80}', version), 'Invalid version name'
           manifest = Path('android/app/src/main/AndroidManifest.xml')
           import xml.etree.ElementTree as ET
           ET.register_namespace('android', 'http://schemas.android.com/apk/res/android')
-          tree = ET.parse(manifest); root = tree.getroot(); ns = '{http://schemas.android.com/apk/res/android}'; app = root.find('application'); app.set(ns + 'label', 'QuickSpend Frog Test')
+          tree = ET.parse(manifest); root = tree.getroot(); ns = '{http://schemas.android.com/apk/res/android}'; app = root.find('application')
           push = next((x for x in app.findall('service') if x.get(ns+'name')=='.UpdateMessagingService'),None)
           if push is None:
               push=ET.SubElement(app,'service',{ns+'name':'.UpdateMessagingService',ns+'exported':'false'})
@@ -1724,7 +1724,6 @@ jobs:
           assert count == 1, 'Cannot locate versionCode'
           s, count = re.subn(r'\bversionName\s+[\x27\x22][^\x27\x22]*[\x27\x22]', 'versionName "' + version + '"', s)
           assert count == 1, 'Cannot locate versionName'
-          s += '\nandroid { defaultConfig { applicationIdSuffix ".frogtest" } }\n'
           s += '\napply from: "ci-release-signing.gradle"\n'
           s += "\ndependencies {\n    implementation platform('com.google.firebase:firebase-bom:35.1.0')\n    implementation 'com.google.firebase:firebase-auth'\n    implementation 'com.google.firebase:firebase-firestore'\n    implementation 'com.google.firebase:firebase-messaging'\n    implementation 'com.google.android.play:app-update:2.1.0'\n    implementation 'androidx.credentials:credentials:1.3.0'\n    implementation 'androidx.credentials:credentials-play-services-auth:1.3.0'\n    implementation 'com.google.android.libraries.identity.googleid:googleid:1.1.1'\n}\n"
           app_gradle.write_text(s)
@@ -1747,11 +1746,11 @@ jobs:
           }
           ''')
           Path('release-metadata.json').write_text(json.dumps({
-              'applicationId': 'com.quickspend.app.frogtest', 'versionCode': code,
+              'applicationId': 'com.quickspend.app', 'versionCode': code,
               'versionName': version, 'targetSdk': 36,
               'commit': os.environ.get('GITHUB_SHA'), 'runId': os.environ.get('GITHUB_RUN_ID')
           }, indent=2))
-          print('Configured separate Frog Test release', version, 'code', code, 'target API 36')
+          print('Configured existing-app Frog Play release', version, 'code', code, 'target API 36')
           PY_CONFIG
       - name: Build signed release bundle
         env:
@@ -1796,14 +1795,13 @@ jobs:
           import json
           ns = '{http://schemas.android.com/apk/res/android}'
           root = ET.parse('dist/AndroidManifest.xml').getroot()
-          assert root.get('package') == 'com.quickspend.app.frogtest', 'Unexpected separate-install application ID'
-          assert root.find('application').get(ns + 'label') == 'QuickSpend Frog Test', 'Test app must be clearly labeled'
+          assert root.get('package') == 'com.quickspend.app', 'Play Store application ID must match existing listing'
           assert int(root.find('uses-sdk').get(ns + 'targetSdkVersion')) >= 36, 'Target API must be at least 36'
           assert root.find('application').get(ns + 'debuggable', 'false') == 'false', 'Release is debuggable'
           activity = next(node for node in root.find('application').findall('activity') if node.get(ns + 'name', '').endswith('MainActivity'))
           picker = next(node for node in root.find('application').findall('activity') if node.get(ns + 'name', '').endswith('CapturePhotoActivity'))
           assert picker.get(ns + 'exported') == 'false', 'Photo picker must remain private'
-          provider = next(node for node in root.find('application').findall('provider') if node.get(ns + 'authorities') == 'com.quickspend.app.frogtest.capturephotos')
+          provider = next(node for node in root.find('application').findall('provider') if node.get(ns + 'authorities') == 'com.quickspend.app.capturephotos')
           assert provider.get(ns + 'exported') == 'false' and provider.get(ns + 'grantUriPermissions') == 'true', 'Camera provider scope is incorrect'
           assert activity.get(ns + 'enableOnBackInvokedCallback') == 'true', 'Predictive Back support missing'
           receivers = root.find('application').findall('receiver')
@@ -1870,15 +1868,15 @@ jobs:
           Path('dist/build-evidence.json').write_text(json.dumps(meta, indent=2))
           print('VERIFIED: signed release AAB, API 36, SMS bridge, native floating capture, receiver, permissions and version code.')
           PY_VERIFY
-          cp "$AAB" "dist/quickspend-frog-test-${GITHUB_RUN_NUMBER}.aab"
+          cp "$AAB" "dist/quickspend-frog-play-${GITHUB_RUN_NUMBER}.aab"
           APK=android/app/build/outputs/apk/release/app-release.apk
           test -s "$APK"
-          cp "$APK" "dist/quickspend-frog-test-${GITHUB_RUN_NUMBER}.apk"
-          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose "dist/quickspend-frog-test-${GITHUB_RUN_NUMBER}.apk"
-          sha256sum "dist/quickspend-frog-test-${GITHUB_RUN_NUMBER}.aab" "dist/quickspend-frog-test-${GITHUB_RUN_NUMBER}.apk" > dist/SHA256SUMS.txt
+          cp "$APK" "dist/quickspend-frog-play-${GITHUB_RUN_NUMBER}.apk"
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose "dist/quickspend-frog-play-${GITHUB_RUN_NUMBER}.apk"
+          sha256sum "dist/quickspend-frog-play-${GITHUB_RUN_NUMBER}.aab" "dist/quickspend-frog-play-${GITHUB_RUN_NUMBER}.apk" > dist/SHA256SUMS.txt
       - uses: actions/upload-artifact@v4
         with:
-          name: quickspend-frog-test-${{ github.run_number }}
+          name: quickspend-frog-play-${{ github.run_number }}
           path: dist/
           if-no-files-found: error
           retention-days: 14
