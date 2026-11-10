@@ -249,9 +249,9 @@ h1{font-size:30px;font-weight:700;letter-spacing:-.5px;margin-bottom:4px}
 .category-limit{padding:4px 8px;border-radius:99px;background:var(--card2);font-size:11px;font-weight:650;white-space:nowrap}
 .category-remainder{padding-top:var(--space-md);border-top:1px solid var(--nav-border);color:var(--mu);font-size:11px;line-height:1.4}
 :root[data-theme="aurora"]{
- --bg:#f4f1f8;--card:#fff;--card2:#eee7f6;--tx:#21182d;--mu:#5d536d;
- --ac:#432668;--positive:#1b6857;--progress:#7753ac;--rd:#a12f50;--bl:#305e96;
- --nav-border:#dfd5eb;--nav-selected:#432668;--nav-selected-bg:#eee2fb;
+ --bg:#f1edf6;--card:#fff;--card2:#eee7f6;--tx:#3a3048;--mu:#62566f;
+ --ac:#533d70;--positive:#1b6857;--progress:#7753ac;--rd:#a12f50;--bl:#305e96;
+ --nav-border:#dfd5eb;--nav-selected:var(--ac);--nav-selected-bg:#eee2fb;
  --aurora-violet:radial-gradient(ellipse at 92% 85%,#f2b6e8,transparent 68%),linear-gradient(145deg,#d7cffb,#bdabed);
  --aurora-blue:radial-gradient(ellipse at 92% 95%,#d1eefa,transparent 70%),linear-gradient(145deg,#bbcef5,#a9b8ed);
  --aurora-coral:radial-gradient(ellipse at 98% 90%,#ffe0c1,transparent 70%),linear-gradient(145deg,#ffd4e6,#f5a8bb);
@@ -271,11 +271,12 @@ h1{font-size:30px;font-weight:700;letter-spacing:-.5px;margin-bottom:4px}
 [data-theme="aurora"] .balance-hero:after{border-color:#58338a32}
 [data-theme="aurora"] :is(.balance-hero .pill,.profile-settings){background:#ffffffa6;border-color:#ffffffab}
 [data-theme="aurora"] :is(.home-pages,.period-switch){background:var(--card2);border-color:var(--nav-border)}
-[data-theme="aurora"] :is(.period-switch button.on,.home-page.on,.profile-settings,.color-choice.selected){color:var(--ac)}
+[data-theme="aurora"] :is(.period-switch button.on,.home-page.on,.profile-settings,.profile-avatar,.account-edit,.color-choice.selected){color:var(--ac)}
+[data-theme="aurora"] .account-dot.on span{background:var(--ac)}
 [data-theme="aurora"] .color-choice.selected{border-color:var(--ac)}
 [data-theme="aurora"] .fab:not(.emi-add-plan){background:var(--ac)}
 [data-theme="aurora"] .onb-panel{border-radius:24px;padding:24px;margin-top:16px;flex:0 0 auto}
-.theme-swatch.aurora{background:#f4f1f8;border-color:#dfd5eb}
+.theme-swatch.aurora{background:#f1edf6;border-color:#dfd5eb}
 .theme-swatch.aurora i:first-child{background:linear-gradient(110deg,#bfb0ed,#f2b6e8)}
 .theme-swatch.aurora i:nth-child(2){background:linear-gradient(110deg,#a9b8ed,#d1eefa)}
 .theme-swatch.aurora i:nth-child(3){background:linear-gradient(110deg,#f5a8bb,#ffe0c1)}
@@ -335,7 +336,7 @@ const COLOR_MODES={
  dark:{name:'Dark',description:'Default appearance',background:'#09090c',scheme:'dark'},
  matte:{name:'Matte dark',description:'Flat charcoal surfaces',background:'#151618',scheme:'dark'},
  light:{name:'Light',description:'A brighter look',background:'#ededed',scheme:'light'},
- aurora:{name:'Aurora',description:'Soft violet, blue and coral',background:'#f4f1f8',scheme:'light'}
+ aurora:{name:'Aurora',description:'Soft violet, blue and coral',background:'#f1edf6',scheme:'light'}
 };
 function validColorMode(mode){return Object.prototype.hasOwnProperty.call(COLOR_MODES,mode)}
 let colorMode='dark',categoryPickerEnabled=false;
