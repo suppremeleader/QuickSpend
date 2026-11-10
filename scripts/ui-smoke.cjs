@@ -179,6 +179,22 @@ const {chromium}=require(process.env.PLAYWRIGHT_MODULE||'playwright'),assert=req
  assert.match(await page.locator('.insight-hero').evaluate(el=>getComputedStyle(el).backgroundImage),/gradient/);
  await page.screenshot({animations:'disabled',path:'ui-smoke-output/aurora-insights.png'});
  await page.locator('.spending-breakdown').scrollIntoViewIfNeeded();await page.screenshot({animations:'disabled',path:'ui-smoke-output/aurora-categories.png'});
+ await page.evaluate(()=>{tx.at(-1).acc='Cash';selectAccount('Main account')});
+ const accounts=page.getByRole('combobox',{name:'Accounts',exact:true});
+ assert.equal(await accounts.inputValue(),'Main account','Insights starts with the Home account');
+ await accounts.selectOption('Cash');
+ assert.equal(await accounts.inputValue(),'Cash');
+ assert.match(await page.locator('.insight-hero .big').textContent(),/₹-100$/);
+ assert.equal(await page.locator('.category-legend>div').count(),1);
+ assert.match(await page.locator('.category-legend').textContent(),/Category 14/);
+ await page.getByRole('button',{name:'Year',exact:true}).click();
+ assert.equal(await accounts.inputValue(),'Cash','Changing the period preserves the account filter');
+ await page.locator('[data-t="home"]').click();
+ assert.equal(await page.locator('.account-dot[aria-current="true"]').getAttribute('aria-label'),'Main account','Insights leaves the Home card selected');
+ await page.locator('[data-t="insights"]').click();
+ assert.equal(await accounts.inputValue(),'Cash','Reopening Insights preserves its selection');
+ await accounts.selectOption('All');assert.equal(await page.locator('.category-legend>div').count(),10);
+
  await page.locator('[data-t="home"]').click();await page.screenshot({animations:'disabled',path:'ui-smoke-output/aurora-home.png'});
  await page.evaluate(()=>{ob=0;showOb()});assert.equal(await page.locator('#onb img').count(),0);await page.screenshot({animations:'disabled',path:'ui-smoke-output/setup.png'});
  const overflow=await page.locator('#onb').evaluate(el=>el.scrollWidth>el.clientWidth+1);assert.equal(overflow,false,'Setup must fit phone width');assert.deepEqual(errors,[]);
