@@ -191,6 +191,10 @@ const {chromium}=require(process.env.PLAYWRIGHT_MODULE||'playwright'),assert=req
  assert.equal(await accounts.inputValue(),'Cash','Changing the period preserves the account filter');
  await page.locator('[data-t="home"]').click();
  assert.equal(await page.locator('.account-dot[aria-current="true"]').getAttribute('aria-label'),'Main account','Insights leaves the Home card selected');
+ assert.equal(await page.locator('.balance-hero .big').first().evaluate(el=>getComputedStyle(el).color),'rgb(58, 48, 72)','Aurora uses plum for balance text');
+ assert.equal(await page.locator('.history-row .history-amount').first().evaluate(el=>getComputedStyle(el).color),'rgb(58, 48, 72)','Aurora uses plum for spending text');
+ await page.screenshot({animations:'disabled',path:'ui-smoke-output/aurora-home-plum.png'});
+
  await page.locator('[data-t="insights"]').click();
  assert.equal(await accounts.inputValue(),'Cash','Reopening Insights preserves its selection');
  await accounts.selectOption('All');assert.equal(await page.locator('.category-legend>div').count(),10);
