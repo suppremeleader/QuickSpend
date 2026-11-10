@@ -1,6 +1,6 @@
 /* QuickSpend: warm glass, one shared onboarding system. */
 :root{--warm:#ff9d4d;--warm-wash:#ff8a2414;--warm-border:#ff9d4d45;--ftue-border:#ffffff19}
-[data-theme="light"]{--warm:#a1430c;--warm-wash:#ff8a2412;--warm-border:#b8511838;--ftue-border:#19231b20}
+:is([data-theme="light"],[data-theme="aurora"]){--warm:#a1430c;--warm-wash:#ff8a2412;--warm-border:#b8511838;--ftue-border:#19231b20}
 .onb,#account-setup{position:absolute;overflow-y:auto;align-items:center;text-align:left;padding:max(18px,env(safe-area-inset-top)) 26px max(20px,env(safe-area-inset-bottom));background:radial-gradient(ellipse at 90% 15%,var(--warm-wash),transparent 52%),var(--bg)}
 .onb-header{width:100%;max-width:360px;align-items:center;justify-content:space-between;min-height:44px;gap:16px}
 .ftue-brand{display:inline-flex;align-items:center;gap:10px;font-size:11px;font-weight:650;letter-spacing:1.9px;color:var(--tx)}.ftue-brand img{border-radius:9px;flex:none}
@@ -17,7 +17,7 @@ html[lang="hi"] .onb h1,html[lang="hi"] .account-headline{font-size:clamp(29px,7
 .budget-hero,.insight-hero,.review-hero{box-shadow:0 12px 30px #0002}
 .recurring-feature{background:radial-gradient(ellipse at top right,var(--warm-wash),transparent 70%),linear-gradient(145deg,var(--card2),var(--card));border-color:var(--warm-border)}.recurring-feature .feature-cta b{color:var(--warm)}
 .feature-open{background:var(--warm-wash);color:var(--warm)}.account-numbers>div{border-bottom-color:var(--ftue-border)}
-[data-theme="light"] #account-setup{background:radial-gradient(ellipse at 90% 15%,var(--warm-wash),transparent 52%),var(--bg)}[data-theme="light"] .recurring-feature{background:linear-gradient(145deg,#fff4e9,#fff);border-color:var(--warm-border)}[data-theme="light"] .recurring-feature .feature-cta b{color:var(--warm)}[data-theme="light"] .feature-open{background:var(--warm-wash)}
+:is([data-theme="light"],[data-theme="aurora"]) #account-setup{background:radial-gradient(ellipse at 90% 15%,var(--warm-wash),transparent 52%),var(--bg)}:is([data-theme="light"],[data-theme="aurora"]) .recurring-feature{background:linear-gradient(145deg,#fff4e9,#fff);border-color:var(--warm-border)}:is([data-theme="light"],[data-theme="aurora"]) .recurring-feature .feature-cta b{color:var(--warm)}:is([data-theme="light"],[data-theme="aurora"]) .feature-open{background:var(--warm-wash)}
 @keyframes ftue-enter{from{opacity:0;transform:translateY(9px)}to{opacity:1;transform:translateY(0)}}
 .onb-panel,.account-setup-scroll{animation:ftue-enter .3s ease-out both}
 @media(max-height:650px){.onb-panel{padding:12px 0}.onb h1,.account-headline{font-size:30px}.od{font-size:13px;margin-top:12px}.odots{margin-top:12px}.onb-actions{padding-top:10px}}
