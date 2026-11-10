@@ -125,7 +125,9 @@ const {chromium}=require(process.env.PLAYWRIGHT_MODULE||'playwright'),assert=req
   console.log('Quick Access gesture state',await page.evaluate(()=>({selected:inAppQuickGesture?.selected,origin:inAppQuickGesture?.origin,held:!!inAppQuickGesture?.categories,cancelled:inAppQuickGesture?.cancelled})));throw error
  });
  assert.equal(await page.locator('#quick-live .is-selected').count(),1,'A level sideways gesture highlights a category');
- await page.mouse.move(phoneBox.x+phoneBox.width/2,phoneBox.y+phoneBox.height-25,{steps:4});
+ const cancelBox=await page.locator('#quick-live .quick-live-hint').boundingBox();
+ assert.ok(cancelBox.y+cancelBox.height/2<phoneBox.y+phoneBox.height-45,'Cancel must be near the category rail');
+ await page.mouse.move(cancelBox.x+cancelBox.width/2,cancelBox.y+cancelBox.height/2,{steps:4});
  await page.locator('#quick-live .quick-live-hint.is-active').waitFor();await page.mouse.up();
  assert.equal(await page.locator('#sheet.on').count(),0,'Cancel does not open or save a payment');
  await page.mouse.move(x,y);await page.mouse.down();await page.locator('#quick-live').waitFor();
