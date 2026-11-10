@@ -1698,8 +1698,7 @@ jobs:
           manifest = Path('android/app/src/main/AndroidManifest.xml')
           import xml.etree.ElementTree as ET
           ET.register_namespace('android', 'http://schemas.android.com/apk/res/android')
-          tree = ET.parse(manifest); root = tree.getroot(); ns = '{http://schemas.android.com/apk/res/android}'; app = root.find('application')
-           app.set(ns + 'label', 'QuickSpend Frog Test')
+          tree = ET.parse(manifest); root = tree.getroot(); ns = '{http://schemas.android.com/apk/res/android}'; app = root.find('application'); app.set(ns + 'label', 'QuickSpend Frog Test')
           push = next((x for x in app.findall('service') if x.get(ns+'name')=='.UpdateMessagingService'),None)
           if push is None:
               push=ET.SubElement(app,'service',{ns+'name':'.UpdateMessagingService',ns+'exported':'false'})
