@@ -1797,7 +1797,7 @@ jobs:
           ns = '{http://schemas.android.com/apk/res/android}'
           root = ET.parse('dist/AndroidManifest.xml').getroot()
           assert root.get('package') == 'com.quickspend.app.frogtest', 'Unexpected separate-install application ID'
-           assert root.find('application').get(ns + 'label') == 'QuickSpend Frog Test', 'Test app must be clearly labeled'
+          assert root.find('application').get(ns + 'label') == 'QuickSpend Frog Test', 'Test app must be clearly labeled'
           assert int(root.find('uses-sdk').get(ns + 'targetSdkVersion')) >= 36, 'Target API must be at least 36'
           assert root.find('application').get(ns + 'debuggable', 'false') == 'false', 'Release is debuggable'
           activity = next(node for node in root.find('application').findall('activity') if node.get(ns + 'name', '').endswith('MainActivity'))
@@ -1871,10 +1871,10 @@ jobs:
           print('VERIFIED: signed release AAB, API 36, SMS bridge, native floating capture, receiver, permissions and version code.')
           PY_VERIFY
           cp "$AAB" "dist/quickspend-frog-test-${GITHUB_RUN_NUMBER}.aab"
-           APK=android/app/build/outputs/apk/release/app-release.apk
-           test -s "$APK"
-           cp "$APK" "dist/quickspend-frog-test-${GITHUB_RUN_NUMBER}.apk"
-           apksigner verify --verbose "dist/quickspend-frog-test-${GITHUB_RUN_NUMBER}.apk"
+          APK=android/app/build/outputs/apk/release/app-release.apk
+          test -s "$APK"
+          cp "$APK" "dist/quickspend-frog-test-${GITHUB_RUN_NUMBER}.apk"
+          apksigner verify --verbose "dist/quickspend-frog-test-${GITHUB_RUN_NUMBER}.apk"
           sha256sum "dist/quickspend-frog-test-${GITHUB_RUN_NUMBER}.aab" "dist/quickspend-frog-test-${GITHUB_RUN_NUMBER}.apk" > dist/SHA256SUMS.txt
       - uses: actions/upload-artifact@v4
         with:
