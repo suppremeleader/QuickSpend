@@ -1874,7 +1874,7 @@ jobs:
           APK=android/app/build/outputs/apk/release/app-release.apk
           test -s "$APK"
           cp "$APK" "dist/quickspend-frog-test-${GITHUB_RUN_NUMBER}.apk"
-          apksigner verify --verbose "dist/quickspend-frog-test-${GITHUB_RUN_NUMBER}.apk"
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose "dist/quickspend-frog-test-${GITHUB_RUN_NUMBER}.apk"
           sha256sum "dist/quickspend-frog-test-${GITHUB_RUN_NUMBER}.aab" "dist/quickspend-frog-test-${GITHUB_RUN_NUMBER}.apk" > dist/SHA256SUMS.txt
       - uses: actions/upload-artifact@v4
         with:
