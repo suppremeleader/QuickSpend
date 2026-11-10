@@ -949,7 +949,7 @@ jobs:
                   String mode=QsLanguage.colorMode(this);
                   if(mode.equals(palette))return;
                   if(!palette.isEmpty())hideAll();
-                  palette=mode;lightMode="light".equals(mode);matteMode="matte".equals(mode);
+                  palette=mode;lightMode=QsLanguage.isLightTheme(mode);matteMode="matte".equals(mode);
                   BG=lightMode?0xfffafafa:matteMode?0xff1f2124:0xff15151b;
                   FG=lightMode?0xff181818:0xfff4f4f6;
                   MUTED=lightMode?0xff626262:matteMode?0xffa6aba4:0xff9a9aa9;

@@ -164,6 +164,22 @@ const {chromium}=require(process.env.PLAYWRIGHT_MODULE||'playwright'),assert=req
  assert.equal(await page.getByRole('dialog',{name:'Update required'}).isVisible(),true,'Required update stays after Escape');
  assert.equal(await page.evaluate(()=>window.quickSpendSystemBack()),true);
  await page.evaluate(()=>{appUpdate.info=null;renderUpdateBanner();closeSheet(false)});
+ await page.evaluate(()=>{ym=[2026,10];rng='Month';view='All';tx=Array.from({length:14},(_,i)=>({id:900+i,a:(14-i)*100,t:'Expense',c:'Category '+(i+1),m:'Example',acc:'Main account',ts:new Date(2026,10,1+i).getTime()}));render()});
+ await page.locator('[data-t="insights"]').click();
+ await page.evaluate(()=>openColorMode());await page.getByRole('button',{name:/Aurora/}).click();
+ await page.waitForFunction(()=>document.documentElement.dataset.theme==='aurora');await page.evaluate(()=>closeSheet());
+ assert.equal(await page.locator('.category-legend>div').count(),10);
+ assert.match(await page.locator('.category-remainder').textContent(),/Remaining categories \(4\) · ₹1,000/);
+ assert.equal(await page.locator('.insight-period b').textContent(),'Nov 2026');
+ const gaps=await page.evaluate(()=>{
+  const box=selector=>document.querySelector('#s-insights '+selector).getBoundingClientRect();
+  return [box('.period-switch').top-box('.page-heading').bottom,box('.insight-hero').top-box('.period-nav').bottom]
+ });
+ assert.deepEqual(gaps.map(Math.round),[16,12],'Insights spacing follows the shared layout scale');
+ assert.match(await page.locator('.insight-hero').evaluate(el=>getComputedStyle(el).backgroundImage),/gradient/);
+ await page.screenshot({animations:'disabled',path:'ui-smoke-output/aurora-insights.png'});
+ await page.locator('.spending-breakdown').scrollIntoViewIfNeeded();await page.screenshot({animations:'disabled',path:'ui-smoke-output/aurora-categories.png'});
+ await page.locator('[data-t="home"]').click();await page.screenshot({animations:'disabled',path:'ui-smoke-output/aurora-home.png'});
  await page.evaluate(()=>{ob=0;showOb()});assert.equal(await page.locator('#onb img').count(),0);await page.screenshot({animations:'disabled',path:'ui-smoke-output/setup.png'});
  const overflow=await page.locator('#onb').evaluate(el=>el.scrollWidth>el.clientWidth+1);assert.equal(overflow,false,'Setup must fit phone width');assert.deepEqual(errors,[]);
  const overlay=await browser.newPage({viewport:{width:390,height:650}});
@@ -200,6 +216,9 @@ const {chromium}=require(process.env.PLAYWRIGHT_MODULE||'playwright'),assert=req
  await overlay.waitForFunction(()=>captureActions.some(x=>x.action==='save'));
  const sent=await overlay.evaluate(()=>captureActions.find(x=>x.action==='save').entry);
  assert.equal(sent.note,'Keep this draft');assert.equal(sent.subscriptionId,'sub1');assert.equal(sent.photo,stubPhoto);
+ await overlay.evaluate(()=>initialiseCapture({payment:{id:2,m:'Aurora demo',a:12,kind:'Expense',demo:true},language:'en',colorMode:'aurora',accounts:[],people:[],categories:{},customCategories:{},emiPlans:[],subscriptions:[]}));
+ assert.equal(await overlay.locator('html').getAttribute('data-theme'),'aurora');
+ assert.equal(await overlay.locator('html').evaluate(el=>getComputedStyle(el).colorScheme),'light');
  assert.deepEqual(overlayErrors,[]);await overlay.close();
  console.log('PASS: Chromium history search/filter/edit routes, navigation scroll reset, text-only setup, Insights cleanup, dark/light screenshots real photo compression/save/removal and recording-control absence and no runtime errors');
  }finally{await browser.close()}

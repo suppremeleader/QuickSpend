@@ -20,18 +20,19 @@ public final class QsLanguage {
     }
     public static String colorMode(Context c) {
         String mode=prefs(c).getString("colorMode","dark");
-        return "light".equals(mode)||"matte".equals(mode)?mode:"dark";
+        return isLightTheme(mode)||"matte".equals(mode)?mode:"dark";
     }
+    public static boolean isLightTheme(String mode) { return "light".equals(mode) || "aurora".equals(mode); }
     public static boolean categoryPicker(Context c){return prefs(c).getBoolean("categoryPicker",false);}
     public static void setCategoryPicker(Context c,boolean enabled){
         if(!prefs(c).edit().putBoolean("categoryPicker",enabled).commit())throw new IllegalStateException("Could not save category picker");
     }
     public static void setColorMode(Context c,String mode) {
-        if(!"dark".equals(mode)&&!"light".equals(mode)&&!"matte".equals(mode)) throw new IllegalArgumentException("Unsupported color mode");
+        if(!"dark".equals(mode)&&!isLightTheme(mode)&&!"matte".equals(mode)) throw new IllegalArgumentException("Unsupported color mode");
         if(!prefs(c).edit().putString("colorMode",mode).commit()) throw new IllegalStateException("Could not save color mode");
     }
     public static void applySystemBars(android.app.Activity activity) {
-        boolean light="light".equals(colorMode(activity));
+        boolean light=isLightTheme(colorMode(activity));
         androidx.core.view.WindowInsetsControllerCompat bars=new androidx.core.view.WindowInsetsControllerCompat(activity.getWindow(),activity.getWindow().getDecorView());
         bars.setAppearanceLightStatusBars(light);bars.setAppearanceLightNavigationBars(light);
     }
