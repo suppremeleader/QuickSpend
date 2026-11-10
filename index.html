@@ -512,6 +512,8 @@ function paintAccountStatus(){const profile=$('#profile-name'),initial=$('#profi
 async function accountTask(stage,work,retryTransient=false){if(cloud.busy){paintAccountStatus();return false}cloud.busy=true;cloud.stage=stage;cloud.error='';cloud.info='';paintAccountStatus();try{await work();return true}catch(error){if(retryTransient&&(['CLOUD_UNAVAILABLE','CLOUD_TIMEOUT'].includes(error?.code)||!error?.code&&/network|offline/i.test(error?.message||''))){
  cloud.info='Waiting to sync. Your records are saved on this phone.';return false
  }cloud.error=accountError(error);if(['saving','checking','restoring'].includes(stage)||error?.code==='CLOUD_TIMEOUT'){cloud.enabled=false;cloud.ready=false;saveCloudPrefs()}return false}finally{cloud.busy=false;cloud.stage='idle';paintAccountStatus()}}
+const CLOUD_BACKUP_WATCHDOG_MS=5*60*1000;
+function cloudBackupPending(){return !!(cloud.ready&&cloud.enabled&&cloud.account&&JSON.stringify(safeCloudData())!==cloud.lastPayload)}
 function scheduleCloudSave(delay=1800){if(!cloud.ready||!cloud.enabled||!cloud.account)return;delay=Math.max(delay,cloudRetryAt-Date.now());if(cloud.lastPayload!==null&&JSON.stringify(safeCloudData())!==cloud.lastPayload&&cloud.info==='Cloud backup saved.')cloud.info='';if(cloudTimer!==null)clearTimeout(cloudTimer);cloudTimer=setTimeout(()=>{cloudTimer=null;saveCloudNow(false)},delay)}
 async function readCloudBackup(){const uid=cloud.account?.uid;if(!uid)throw Error('Sign in again before using cloud saving.');const remote=await accountTimeout(accountBridge().download({uid}));if(cloud.account?.uid!==uid)throw Error('Your account changed. Please try again.');if(typeof remote.exists!=='boolean'||!Number.isInteger(remote.revision)||remote.revision<0)throw Error('Could not read your cloud backup. Check your connection and try again.');cloud.remote=remote;return remote}
 function utf8Bytes(value){return typeof TextEncoder!=='undefined'?new TextEncoder().encode(value).length:encodeURIComponent(value).replace(/%[A-F\d]{2}/gi,'x').length}
@@ -1441,12 +1443,15 @@ if(!captureSurface){
 bindInAppQuickAccess();
 bindReviewSwipe();
 setInterval(()=>{if(!document.hidden)pull(true)},4000);
-document.addEventListener('visibilitychange',()=>{if(document.hidden)cancelInAppQuickAccess();else{pull(false);finishFloatingSetup()}});
+document.addEventListener('visibilitychange',()=>{if(document.hidden){cancelInAppQuickAccess();if(cloudBackupPending())saveCloudNow(false)}else{pull(false);finishFloatingSetup();if(cloudBackupPending())scheduleCloudSave(0)}});
 window.addEventListener('focus',()=>{pull(true);finishFloatingSetup();refreshUpiStatus()});
 function quickSpendBackRoute(){if(inAppQuickGesture?.categories){cancelInAppQuickAccess();return true}if($('#sheet').classList.contains('on')){closeSheet(false);return true}if(historyOpen){closeHistory(false);return true}if(currentTab!=='home'){navigateTab('home',false);return true}if(homePage!=='overview'){homeOwnEntry=false;homePage='overview';render();$('#s-home').scrollTop=0;return true}return false}
 window.quickSpendSystemBack=()=>{if(appUpdate.info?.required)return true;if(entryCategoryTab){closeEntryCategory();return true}if(inAppQuickGesture?.categories)return quickSpendBackRoute();const secondary=$('#sheet').classList.contains('on')||historyOpen||currentTab!=='home'||homePage!=='overview';if(!secondary)return false;if(window.history?.back&&(sheetOwnEntry||historyOwnEntry||tabOwnEntry||homeOwnEntry))window.history.back();else quickSpendBackRoute();return true};
 window.addEventListener('popstate',()=>{if(ignoredBacks){ignoredBacks--;return}quickSpendBackRoute()});
-window.addEventListener('online',()=>{cloudRetryAt=0;scheduleCloudSave()});
+// Foreground WebView timers can pause while Android is backgrounded. Catch up on return.
+setInterval(()=>{if(!document.hidden&&cloudBackupPending())saveCloudNow(false)},CLOUD_BACKUP_WATCHDOG_MS);
+window.addEventListener('pagehide',()=>{if(cloudBackupPending())saveCloudNow(false)});
+window.addEventListener('online',()=>{cloudRetryAt=0;scheduleCloudSave(0)});
 window.addEventListener('quickspendResume',()=>{scheduleCloudSave();pull(true).then(()=>takePlanningAction());syncPlanningNative(true);finishFloatingSetup();refreshUpiStatus()});
 pull(false).then(()=>takePlanningAction());
 setupFloatingOnLaunch();
