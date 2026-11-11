@@ -2,7 +2,7 @@
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>QuickSpend — Expense Manager</title>
-<link rel="icon" type="image/webp" href="assets/quickspend-frog-112.webp">
+<link rel="icon" type="image/webp" href="assets/quickspend-frog-114.webp">
 <style>
 :root{--bg:#09090c;--card:#15151b;--card2:#1d1d25;--tx:#f4f4f6;--mu:#8b8b97;--ac:#c9f36b;--rd:#ff6b6b;--bl:#6bb7ff;--or:#ffb86b;--space-xs:4px;--space-sm:8px;--space-md:12px;--space-lg:16px;--space-xl:20px;color-scheme:dark}
 *{box-sizing:border-box;margin:0;-webkit-tap-highlight-color:transparent}
@@ -278,6 +278,17 @@ h1{font-size:30px;font-weight:700;letter-spacing:-.5px;margin-bottom:4px}
 [data-theme="aurora"] .color-choice.selected{border-color:var(--ac)}
 [data-theme="aurora"] .fab:not(.emi-add-plan){background:var(--ac)}
 [data-theme="aurora"] .onb-panel{border-radius:24px;padding:24px;margin-top:16px;flex:0 0 auto}
+[data-theme="frog"]{--bg:#ffffff;--card:#ffffff;--card2:#f4faec;--tx:#1c3315;--mu:#55704a;--ac:#368a08;--positive:#368a08;--progress:#7fd909;--rd:#a72b43;--bl:#297a66;--or:#756012;--chart-income:#49a113;--chart-expense:#e1cb20;--nav-bg:#ffffff;--nav-border:#dcebcf;--nav-selected:#30581d;--nav-selected-bg:#e9f9d6;color-scheme:light}
+[data-theme="frog"] body{background:#edf8e4}
+[data-theme="frog"] .phone{border-color:#dbeecb}
+[data-theme="frog"] .sheet{background:#fff;border-color:#dcebcf}
+[data-theme="frog"] :is(.fld,.who,.addrow input,.seg){background:#fff;border-color:#dcebcf;color:var(--tx)}
+[data-theme="frog"] .seg .on{background:#e5f8c9;color:#30581d}
+[data-theme="frog"] .theme-check,[data-theme="frog"] .tabs .on{color:#30581d}
+[data-theme="frog"] :is(.balance-hero,.budget-teaser,.insight-hero){background:linear-gradient(135deg,#f6ffeb,#e7f8c9);border-color:#c8e7a9}
+[data-theme="frog"] :is(.save,.primary-wide,.fab){background:#7fd909;color:#203b0c}
+[data-theme="frog"] .period-switch .on{background:#7fd909;color:#203b0c}
+.theme-swatch.frog{background:#fff;border-color:#b8e891}.theme-swatch.frog i{background:#fcec89}.theme-swatch.frog i:first-child{background:#7fd909}.theme-swatch.frog i:nth-child(2){background:#36bd03}.theme-swatch.frog i:nth-child(3){background:#fcec89}
 .theme-swatch.aurora{background:#f1edf6;border-color:#dfd5eb}
 .theme-swatch.aurora i:first-child{background:linear-gradient(110deg,#bfb0ed,#f2b6e8)}
 .theme-swatch.aurora i:nth-child(2){background:linear-gradient(110deg,#a9b8ed,#d1eefa)}
@@ -288,7 +299,7 @@ h1{font-size:30px;font-weight:700;letter-spacing:-.5px;margin-bottom:4px}
 <div class="phone" id="ph">
   <div class="sms" id="sms"></div>
   <div class="quick-live" id="quick-live" hidden aria-hidden="true"></div>
-  <button type="button" class="bubble" id="bub"><img src="assets/quickspend-frog-112.webp" alt="QuickSpend quick capture" draggable="false"><em aria-hidden="true">1</em></button>
+  <button type="button" class="bubble" id="bub"><img src="assets/quickspend-frog-114.webp" alt="QuickSpend quick capture" draggable="false"><em aria-hidden="true">1</em></button>
 
   <div class="scr on" id="s-home"></div>
   <div class="capture-praise" id="capture-praise" role="status" hidden></div>
@@ -338,7 +349,8 @@ const COLOR_MODES={
  dark:{name:'Dark',description:'Default appearance',background:'#09090c',scheme:'dark'},
  matte:{name:'Matte dark',description:'Flat charcoal surfaces',background:'#151618',scheme:'dark'},
  light:{name:'Light',description:'A brighter look',background:'#ededed',scheme:'light'},
- aurora:{name:'Aurora',description:'Soft violet, blue and coral',background:'#f1edf6',scheme:'light'}
+ aurora:{name:'Aurora',description:'Soft violet, blue and coral',background:'#f1edf6',scheme:'light'},
+ frog:{name:'Frog',description:'White, frog green and soft yellow',background:'#ffffff',scheme:'light'}
 };
 function validColorMode(mode){return Object.prototype.hasOwnProperty.call(COLOR_MODES,mode)}
 let colorMode='dark',categoryPickerEnabled=false;
