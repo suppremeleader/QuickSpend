@@ -19,10 +19,10 @@ public final class QsLanguage {
         if (!prefs(c).edit().putString("language", language).commit()) throw new IllegalStateException("Could not save language");
     }
     public static String colorMode(Context c) {
-        String mode=prefs(c).getString("colorMode","dark");
+        String mode=prefs(c).getString("colorMode","frog");
         return isLightTheme(mode)||"matte".equals(mode)?mode:"dark";
     }
-    public static boolean isLightTheme(String mode) { return "light".equals(mode) || "aurora".equals(mode); }
+    public static boolean isLightTheme(String mode) { return "light".equals(mode) || "aurora".equals(mode) || "frog".equals(mode); }
     public static boolean categoryPicker(Context c){return prefs(c).getBoolean("categoryPicker",false);}
     public static void setCategoryPicker(Context c,boolean enabled){
         if(!prefs(c).edit().putBoolean("categoryPicker",enabled).commit())throw new IllegalStateException("Could not save category picker");

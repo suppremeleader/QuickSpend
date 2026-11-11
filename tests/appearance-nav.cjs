@@ -1,6 +1,6 @@
 const assert=require('assert'),fs=require('fs'),{app,settle}=require('./app-inbox.cjs');
 (async()=>{
- const a=app({savedLanguage:'en',tabs:true});await settle();assert.equal(a.eval('colorMode'),'dark','Default remains dark');assert.equal(a.nodes.get('html').attrs['data-theme'],'dark');
+ const a=app({savedLanguage:'en',tabs:true});await settle();assert.equal(a.eval('colorMode'),'frog','New users start in Frog');assert.equal(a.nodes.get('html').attrs['data-theme'],'frog');
  const tabs=['home','review','friends','insights'].map(key=>a.nodes.get('#tab-'+key));assert.equal(tabs[0].attrs['aria-selected'],'true');assert.ok(tabs[0].classList.contains('on'));for(const tab of tabs){assert.match(tab.innerHTML,/<svg/);assert.doesNotMatch(tab.innerHTML,/>Home<|>Review<|>Insights<|>Lent/);assert.ok(tab.attrs['aria-label'])}
  tabs[1].click();assert.equal(a.eval('currentTab'),'review');assert.equal(tabs[1].attrs['aria-selected'],'true');assert.equal(tabs[0].attrs['aria-selected'],'false');assert.ok(tabs[1].classList.contains('on'));
  tabs[1].listeners.keydown({key:'ArrowRight',preventDefault(){}});assert.equal(a.eval('currentTab'),'friends','Keyboard arrows navigate icon-only tabs');assert.equal(tabs[2].attrs['aria-selected'],'true');
@@ -11,6 +11,7 @@ const assert=require('assert'),fs=require('fs'),{app,settle}=require('./app-inbo
  await a.c.setColorMode('light');assert.equal(a.eval("localStorage.getItem('qs_color_mode')"),'light');assert.equal(a.nodes.get('html').attrs['data-theme'],'light');assert.equal(a.nodes.get('html').style.colorScheme,'light');assert.equal(modes.at(-1),'light');assert.equal(a.eval('JSON.stringify(safeCloudData())'),snapshot,'Appearance does not change finance records');assert.notDeepEqual(a.c.chartColors(),a.eval('CHART_COLORS'));assert.ok(new Set(a.c.chartColors()).size>=10);assert.match(a.nodes.get('#sheet').innerHTML,/color-choice selected/);
  const b=app({savedLanguage:'en',savedColorMode:'light'});await settle();assert.equal(b.eval('colorMode'),'light','Mode survives restart');assert.equal(b.nodes.get('html').attrs['data-theme'],'light');
 
+ await a.c.setColorMode('frog');assert.equal(a.nodes.get('html').attrs['data-theme'],'frog');assert.equal(modes.at(-1),'frog');
  await a.c.setColorMode('aurora');assert.equal(modes.at(-1),'aurora');assert.equal(a.nodes.get('html').attrs['data-theme'],'aurora');assert.equal(a.nodes.get('html').style.colorScheme,'light');
  assert.equal(a.eval('JSON.stringify(safeCloudData())'),snapshot);
  const aurora=app({savedLanguage:'en',savedColorMode:'aurora'});await settle();assert.equal(aurora.eval('colorMode'),'aurora','Aurora survives restart');

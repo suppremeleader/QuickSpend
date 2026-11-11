@@ -71,3 +71,53 @@ html[lang="hi"] .onb h1,html[lang="hi"] .account-headline{font-size:clamp(29px,7
 #account-setup .account-action-primary{background:#7fd909;color:#203b16;border-color:#67bc09}
 #account-setup .account-continue{background:#fff}
 @media(prefers-reduced-motion:reduce){.onb *{transition:none!important}}
+
+/* v115: Thumb-safe onboarding progression and accessible account CTAs. */
+.onb .onb-header{align-items:center}
+.onb .onb-nav{display:flex;align-items:center;gap:5px;margin-left:auto}
+.onb .onb-nav .ob-back{margin-right:8px;color:#30581d;font-weight:700}
+.onb .onb-nav .ob-defer{font-size:12px;opacity:.8;text-decoration:underline;text-underline-offset:3px}
+#onb .onb-actions{padding-bottom:max(48px,env(safe-area-inset-bottom));padding-top:10px}
+#onb .onb-actions .obtn{min-height:54px;border-radius:15px}
+#onb .onb-actions .onb-settings{margin:6px 0 0}
+#account-setup .account-setup-layout{max-width:390px}
+#account-setup .account-setup-scroll{flex:1;min-height:0;overflow-y:auto;padding:34px 0 10px}
+#account-setup .account-headline{margin:16px 0 14px}
+#account-setup .account-subtitle{margin-bottom:22px}
+#account-setup .account-continue{
+ flex:0 0 auto;display:flex;flex-direction:column;align-items:stretch;gap:10px;
+ max-width:390px;width:100%;padding:12px 0 max(35px,env(safe-area-inset-bottom));
+ background:#fff;border-top:1px solid #e0edcf
+}
+#account-setup .account-continue :is(.google-signin,.google-backup,.obtn){margin:0;width:100%;max-width:none;min-height:52px;border-radius:15px}
+#account-setup .account-continue .google-signin{
+ background:#7fd909;color:#203b16;border:1px solid #67bc09;font-weight:750
+}
+#account-setup .account-continue .account-secondary{
+ background:#fff!important;color:#30581d!important;
+ border:1px solid #d0e3c3!important;font-weight:650
+}
+#account-setup .account-continue .google-backup{
+ background:#fff;color:#30581d;border:1px solid #b2d69c;
+}
+#account-setup .account-continue .account-mini-actions{
+ display:flex;justify-content:space-around;align-items:center;gap:12px;padding:0 6px;
+}
+#account-setup .account-mini-actions button{
+ flex:1;min-height:44px;background:transparent!important;border:0!important;
+ box-shadow:none!important;color:#547449!important;text-decoration:underline;text-underline-offset:3px;
+ padding:8px 4px;font-size:12px;font-weight:550
+}
+#account-setup .account-mini-actions .account-action-danger{color:#795e57!important}
+#account-setup .account-continue .obtn.save{order:3}
+#account-setup .account-continue .google-backup{order:2}
+#account-setup .account-mini-actions{order:1}
+#account-setup .account-status[data-state="error"]{color:#a72b43}
+#account-setup .account-privacy{margin-top:12px;color:#56704b}
+@media(max-height:660px){
+ #account-setup .account-setup-scroll{padding-top:12px}
+ #account-setup .account-identity{margin:12px 0 8px;padding:11px}
+ #account-setup .account-numbers{margin:8px 0 10px}
+ #account-setup .account-continue{gap:6px;padding-bottom:12px}
+ #onb .onb-actions{padding-bottom:16px}
+}
