@@ -14,7 +14,7 @@ const {chromium}=require(process.env.PLAYWRIGHT_MODULE||'playwright'),assert=req
  const frogAudit=async(selectors,label)=>{
   const results=await page.evaluate(selectors=>selectors.map(selector=>{
    const el=document.querySelector(selector);if(!el)return{selector,missing:true};
-   const c=getComputedStyle(el),parse=v=>(v.match(/[\\d.]+/g)||[]).slice(0,3).map(Number);
+   const c=getComputedStyle(el),parse=v=>(v.match(/[\d.]+/g)||[]).slice(0,3).map(Number);
    const bg=parse(c.backgroundColor),fg=parse(c.color);
    const luminance=arr=>arr.reduce((sum,v,i)=>{
     let n=v/255;n=n<=.04045?n/12.92:((n+.055)/1.055)**2.4;
