@@ -309,6 +309,73 @@ h1{font-size:30px;font-weight:700;letter-spacing:-.5px;margin-bottom:4px}
 [data-theme="frog"] .saved-symbol{background:#e8f6d6;color:#30581d}
 [data-theme="frog"] :is(.profile-settings,.icon-btn){background:#f3fbea;color:#30581d;border-color:#d8ebc8}
 [data-theme="frog"] :is(.budget-teaser,.insight-hero,.review-hero,.balance-hero){text-shadow:none}
+
+/* Frog accessibility audit v117: one surface vocabulary across every screen.
+   Dark-theme cards and icon fills must never leak into the light Frog mode. */
+[data-theme="frog"]{
+ --frog-ink:#203b16;--frog-muted:#4d6745;--frog-line:#d4e5c7;
+ --frog-pale:#f4faee;--frog-panel:#eff8e8;--frog-green:#7fd909;
+ --frog-yellow:#fcec89;--frog-danger:#9c3547;
+ --card:#ffffff;--card2:#f4faee;--tx:#203b16;--mu:#4d6745;
+ --nav-bg:#ffffff;--nav-border:#d4e5c7;--nav-selected:#30581d;
+ --ac:#368a08;--rd:#9c3547;--positive:#286a12;
+}
+[data-theme="frog"] :is(
+ .budget-hero,.budget-card-strong,.recurring-feature,.emi-hero,
+ .recurring-plan,.emi-plan,.empty-panel,.planning-summary,
+ .quick-intro,.insight-highlights section,.person-card,
+ .settings-group,.color-choice,.recurring-plan,.account-numbers>div
+){
+ background:#f4faee!important;border-color:#d4e5c7!important;
+ color:#203b16!important;box-shadow:none!important;
+}
+[data-theme="frog"] :is(.budget-hero,.budget-card-strong,.recurring-feature,.emi-hero,.empty-panel,.planning-summary,.quick-intro){
+ background:#f4faee!important;
+}
+[data-theme="frog"] :is(.debt-total,.debt-total.receive,.debt-total.repay){
+ background:#f0f8e7!important;border:1px solid #c7dfb2!important;
+ box-shadow:none!important;color:#203b16!important;
+}
+[data-theme="frog"] .debt-total.repay{background:#fff4ec!important;border-color:#e8d4c8!important}
+[data-theme="frog"] :is(.debt-total span,.debt-total.repay span){color:#4d6745!important}
+[data-theme="frog"] .debt-total b{color:#203b16!important}
+[data-theme="frog"] :is(.debt-due,.person-top>strong.neg,.neg){color:#a43b50!important}
+[data-theme="frog"] :is(.settle-action,.debt-add){
+ background:#e8f7d3!important;border-color:#b5d997!important;
+ color:#285414!important;box-shadow:none!important;
+}
+[data-theme="frog"] .debt-add{background:#7fd909!important;border-color:#70c40b!important;color:#203b16!important}
+[data-theme="frog"] :is(.settings-icon,.empty-symbol,.person-avatar,.payment-symbol,.saved-symbol){
+ background:#e3f4d3!important;border-color:#cbe5b5!important;
+ color:#30581d!important;
+}
+[data-theme="frog"] .danger-row .settings-icon{background:#ffeded!important;color:#9c3547!important}
+[data-theme="frog"] :is(.settings-row+.settings-row,.settings-group,.person-card,.emi-plan,.recurring-plan){
+ border-color:#d4e5c7!important;
+}
+[data-theme="frog"] :is(.settings-row,.settings-copy b,.settings-copy small,.settings-arrow){color:#203b16}
+[data-theme="frog"] :is(.settings-copy small,.feature-metric-label,.feature-stats small,.feature-cta,.emi-progress-title,.emi-progress-meta,.emi-progress-total span){color:#4d6745!important}
+[data-theme="frog"] .feature-open{background:#e1f2ce!important;color:#30581d!important}
+[data-theme="frog"] .feature-cta{border-color:#d4e5c7!important}
+[data-theme="frog"] :is(.feature-cta b,.recurring-feature .feature-cta b){color:#286a12!important}
+[data-theme="frog"] :is(.emi-progress-total strong,.emi-hero .big,.feature-number,.review-count,.insight-hero .big){color:#203b16!important}
+[data-theme="frog"] :is(.emi-progress-track,.budget-track){background:#dae8d1!important}
+[data-theme="frog"] :is(.emi-progress-track i,.budget-track i){background:#7fd909!important}
+[data-theme="frog"] :is(.insight-hero,.review-hero){background:#eff9df!important;color:#203b16!important;border-color:#cbe4b2!important}
+[data-theme="frog"] .insight-hero .neg{color:#a43b50!important}
+[data-theme="frog"] :is(.insight-hero>span,.insight-hero small,.review-count>span,.review-stat-row small){color:#4d6745!important}
+[data-theme="frog"] :is(.account-avatar,.profile-avatar){background:#e0f3c9!important;color:#30581d!important;border-color:#c0dda7!important}
+[data-theme="frog"] :is(.settings-group,.review-payment,.insight-highlights section,.color-choice){box-shadow:none!important}
+[data-theme="frog"] .review-payment{background:#fff!important;border-color:#d4e5c7!important}
+[data-theme="frog"] :is(.note-tool,.tool-icon,.account-action,.account-editor-label input,.account-editor-label select){
+ background:#fff!important;border-color:#d4e5c7!important;color:#203b16!important;
+}
+[data-theme="frog"] :is(.recurring-plan-bottom,.recurring-plan-top small,.empty-panel p,.person-copy small){color:#4d6745!important}
+[data-theme="frog"] :is(.account-status[data-state="error"],.danger-row b){color:#9c3547!important}
+[data-theme="frog"] .account-action-danger{color:#9c3547!important;background:#fff3f3!important;border-color:#ebc7ce!important}
+[data-theme="frog"] :is(.pos,.chart-income){color:#286a12!important}
+[data-theme="frog"] :is(.cashflow-chart text,.donut-label){fill:#4d6745}
+[data-theme="frog"] .save{background:#7fd909;color:#203b16}
 </style><link rel="stylesheet" href="assets/ftue.css">
 </head><body>
 <div class="demo"><span>Web · saved in this browser</span><button onclick="sms()">📩 Test quick capture</button><button onclick="ob=0;showOb()">View setup</button></div>
