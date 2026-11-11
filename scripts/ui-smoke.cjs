@@ -10,6 +10,38 @@ const {chromium}=require(process.env.PLAYWRIGHT_MODULE||'playwright'),assert=req
  });
  fs.mkdirSync('ui-smoke-output',{recursive:true});
  await page.goto('file://'+path.join(process.cwd(),'index.html'));await page.locator('#s-home .history-row').first().waitFor();assert.equal(await page.locator('#s-home .history-row').count(),5);
+ // Check the full Frog theme for inherited dark panels and unreadable labels.
+ const frogAudit=async(selectors,label)=>{
+  const results=await page.evaluate(selectors=>selectors.map(selector=>{
+   const el=document.querySelector(selector);if(!el)return{selector,missing:true};
+   const c=getComputedStyle(el),parse=v=>(v.match(/[\d.]+/g)||[]).slice(0,3).map(Number);
+   const bg=parse(c.backgroundColor),fg=parse(c.color);
+   const luminance=arr=>arr.reduce((sum,v,i)=>{
+    let n=v/255;n=n<=.04045?n/12.92:((n+.055)/1.055)**2.4;
+    return sum+n*[.2126,.7152,.0722][i];
+   },0);
+   const a=luminance(bg),b=luminance(fg),contrast=(Math.max(a,b)+.05)/(Math.min(a,b)+.05);
+   return{selector,bg,fg,contrast};
+  }),selectors);
+  for(const x of results){assert.equal(x.missing,undefined,label+' missing '+x.selector);assert.ok(x.bg.reduce((a,b)=>a+b,0)>410,label+' dark panel '+JSON.stringify(x));assert.ok(x.contrast>=4.5,label+' low contrast '+JSON.stringify(x));}
+ };
+ assert.equal(await page.evaluate(()=>colorMode),'frog','Frog is the clean-install default');
+ await frogAudit(['.balance-hero'], 'Home');
+ await page.screenshot({animations:'disabled',path:'ui-smoke-output/frog-home.png'});
+ await page.evaluate(()=>{homePage='savings';render()});await frogAudit(['.planning-summary'], 'Savings');
+ await page.screenshot({animations:'disabled',path:'ui-smoke-output/frog-savings.png'});
+ await page.evaluate(()=>{homePage='emi';render()});await frogAudit(['.emi-hero'], 'EMI');
+ await page.screenshot({animations:'disabled',path:'ui-smoke-output/frog-emi.png'});
+ await page.evaluate(()=>{homePage='overview';currentTab='review';render()});await frogAudit(['.review-hero'], 'Review');
+ await page.screenshot({animations:'disabled',path:'ui-smoke-output/frog-review.png'});
+ await page.evaluate(()=>{currentTab='friends';render()});await frogAudit(['.debt-total.receive','.debt-total.repay'], 'Lent & borrowed');
+ await page.screenshot({animations:'disabled',path:'ui-smoke-output/frog-friends.png'});
+ await page.evaluate(()=>{currentTab='insights';render()});await frogAudit(['.insight-hero'], 'Insights');
+ await page.screenshot({animations:'disabled',path:'ui-smoke-output/frog-insights.png'});
+ await page.evaluate(()=>{currentTab='home';homePage='overview';render();openData()});
+ await frogAudit(['.settings-group','.settings-icon'], 'Settings');
+ await page.screenshot({animations:'disabled',path:'ui-smoke-output/frog-settings.png'});
+ await page.evaluate(()=>closeSheet());
  await page.screenshot({animations:'disabled',path:'ui-smoke-output/home.png'});
  await page.evaluate(()=>document.querySelector('#s-home').scrollTop=200);assert.ok(await page.locator('#s-home').evaluate(el=>el.scrollTop)>0);
  await page.locator('[data-t="insights"]').click();assert.equal(await page.locator('#s-insights').evaluate(el=>el.scrollTop),0);assert.equal(await page.getByText('Daily average',{exact:true}).count(),0);assert.equal(await page.getByText('Money over time',{exact:true}).count(),0);await page.screenshot({animations:'disabled',path:'ui-smoke-output/insights.png'});
