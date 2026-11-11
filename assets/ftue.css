@@ -26,3 +26,48 @@ html[lang="hi"] .onb h1,html[lang="hi"] .account-headline{font-size:clamp(29px,7
 
 /* Typography leads setup; no decorative artwork. */
 #account-setup .account-setup-scroll{padding-top:42px}.onb h1,.account-headline{font-size:clamp(36px,9vw,46px);line-height:1.1}.onb-panel .od{max-width:30ch}.ftue-brand{font-size:13px;letter-spacing:2.4px}@media(max-height:480px){#account-setup .account-setup-scroll{padding-top:12px}.onb h1,.account-headline{font-size:30px}}
+
+/* Frog FTUE v114: white first, fresh green actions, soft yellow highlights.
+   Intentional: no mascot artwork on onboarding or account setup. */
+.onb,#account-setup,#language-choice{
+  --ftue-white:#ffffff;--ftue-green:#7fd909;--ftue-green-deep:#30581d;
+  --ftue-yellow:#fcec89;--ftue-border:#dbeecf;
+  --warm:#368a08;--warm-wash:#f4ffe9;--warm-border:#cde9b1;
+  --bg:#ffffff;--card:#ffffff;--card2:#f5faef;--tx:#203b16;--mu:#5b7151;
+  --ac:#368a08;--rd:#a72b43;color-scheme:light;
+  background:#ffffff!important;color:#203b16!important;
+  text-align:left;
+}
+.onb .onb-header,#account-setup .onb-header,#language-choice .onb-header{border-bottom:1px solid #e8f2e2;padding-bottom:10px}
+.onb .ftue-brand,#account-setup .ftue-brand,#language-choice .ftue-brand{color:#30581d;letter-spacing:1.7px;font-size:12px}
+.onb .ftue-brand::before,#account-setup .ftue-brand::before,#language-choice .ftue-brand::before{
+ content:'';display:inline-block;width:10px;height:10px;flex:none;border-radius:4px;background:#7fd909;box-shadow:0 0 0 3px #fcec8970
+}
+.onb .onb-panel,#language-choice .onb-panel{padding-top:32px}
+.onb h1,#account-setup .account-headline{color:#203b16;letter-spacing:-1.25px;font-weight:750}
+.onb .od,#account-setup .account-subtitle{color:#5b7151}
+.onb .ftue-kicker,#language-choice .ftue-kicker{color:#368a08;text-transform:uppercase;font-weight:750;letter-spacing:1.4px}
+.onb .odots{margin-top:18px;gap:7px}
+.onb .odots i{height:5px;background:#e6f1de;border-radius:100px}
+.onb .odots i.on{background:#7fd909}
+.onb .obtn,.onb .save.obtn,#account-setup .save.obtn{
+ background:#7fd909!important;border:1px solid #67bc09!important;color:#203b16!important;
+ border-radius:13px;box-shadow:none;font-weight:750
+}
+.onb .oskip{color:#476b37}
+.onb button:focus-visible{outline:3px solid #30581d;outline-offset:3px}
+.onb .onb-settings{background:#fff;border:1px solid #dbeecf;color:#30581d}
+.onb .language-options{gap:11px}
+.onb .language-options button{
+ background:#ffffff;color:#203b16;min-height:76px;
+ border:1px solid #daeacb;border-radius:16px;box-shadow:0 3px 12px #23441408;
+}
+.onb .language-options button>span:last-child{color:#368a08}
+.onb .language-options button:hover,.onb .language-options button:focus-visible{border-color:#7fd909;background:#f7ffed}
+#account-setup .account-identity,#account-setup .account-numbers>div{
+ background:#fbfff6;border-color:#dceccf;color:#203b16
+}
+#account-setup .google-signin,#account-setup .account-action{background:#fff;border:1px solid #dbeecf;color:#30581d}
+#account-setup .account-action-primary{background:#7fd909;color:#203b16;border-color:#67bc09}
+#account-setup .account-continue{background:#fff}
+@media(prefers-reduced-motion:reduce){.onb *{transition:none!important}}
