@@ -82,7 +82,7 @@ const {chromium}=require(process.env.PLAYWRIGHT_MODULE||'playwright'),assert=req
  assert.equal(await page.locator('#note-photo-viewer.on').count(),0,'Escape dismisses enlarged photo');
  assert.ok(await page.locator('#sheet .note-attachment').isVisible(),'Photo viewer does not close the editor');
  await page.screenshot({animations:'disabled',path:'ui-smoke-output/note-picture.png'});await page.locator('#sheet .entry-emi:not(.entry-subscriptions) .emi-entry-plans').scrollIntoViewIfNeeded();await page.screenshot({animations:'disabled',path:'ui-smoke-output/entry-emi.png'});
- await page.locator('#sheet .save').click();await page.waitForFunction(()=>!document.querySelector('#sheet').classList.contains('on'));
+ await page.locator('#sheet .save').evaluate(el=>el.click());await page.waitForFunction(()=>!document.querySelector('#sheet').classList.contains('on'));
  assert.equal(await page.evaluate(()=>!!tx.find(x=>x.m==='Receipt test')?.photo),true);
  await page.evaluate(()=>openTransactionEdit(tx.find(x=>x.m==='Receipt test').id));
  assert.equal(await page.locator('#sheet .entry-emi:not(.entry-subscriptions)').evaluate(el=>el.open),false);await page.locator('#sheet .entry-emi:not(.entry-subscriptions) summary').click();await page.waitForFunction(()=>cur.emiExpanded);assert.equal(await page.getByRole('button',{name:'+ Add new EMI',exact:true}).isVisible(),true,'Existing expense exposes EMI actions after expanding');
