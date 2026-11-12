@@ -27,6 +27,8 @@ const {chromium}=require(process.env.PLAYWRIGHT_MODULE||'playwright'),assert=req
  };
  assert.equal(await page.evaluate(()=>colorMode),'frog','Frog is the clean-install default');
  await frogAudit(['.balance-hero'], 'Home');
+ const editCheck=await page.evaluate(()=>{const el=document.querySelector('.account-edit');if(!el)return null;const style=getComputedStyle(el);return{bg:style.backgroundColor,fg:style.color}});
+ assert.ok(editCheck&&/rgb\\(255, 255, 255\\)/.test(editCheck.bg),'Account edit button should have a white surface, never black');
  await page.screenshot({animations:'disabled',path:'ui-smoke-output/frog-home.png'});
  await page.evaluate(()=>{homePage='savings';render()});await frogAudit(['.planning-summary'], 'Savings');
  await page.screenshot({animations:'disabled',path:'ui-smoke-output/frog-savings.png'});
@@ -72,7 +74,14 @@ const {chromium}=require(process.env.PLAYWRIGHT_MODULE||'playwright'),assert=req
  await page.waitForFunction(()=>!!cur.photo&&!noteBusy);
  await page.getByRole('button',{name:'+ Add new EMI',exact:true}).click();await page.waitForFunction(()=>!!emiEntryReturn);await page.evaluate(()=>window.quickSpendSystemBack());await page.waitForFunction(()=>!emiEntryReturn&&!!document.querySelector('#note-picture'));assert.equal(await page.evaluate(()=>!!cur.photo&&cur.a===25),true);
  assert.equal(await page.getByRole('button',{name:'🎙️ Voice note',exact:true}).count(),0,'Recording remains deferred');
- assert.equal(await page.locator('#sheet .note-attachment img').count(),1);await page.screenshot({animations:'disabled',path:'ui-smoke-output/note-picture.png'});await page.locator('#sheet .entry-emi:not(.entry-subscriptions) .emi-entry-plans').scrollIntoViewIfNeeded();await page.screenshot({animations:'disabled',path:'ui-smoke-output/entry-emi.png'});
+ assert.equal(await page.locator('#sheet .note-attachment img').count(),1);
+ await page.getByRole('button',{name:'Enlarge attached picture'}).click();
+ assert.equal(await page.locator('#note-photo-viewer.on img').count(),1,'Existing attachment opens full-screen');
+ await page.screenshot({animations:'disabled',path:'ui-smoke-output/photo-enlarged.png'});
+ await page.keyboard.press('Escape');
+ assert.equal(await page.locator('#note-photo-viewer.on').count(),0,'Escape dismisses enlarged photo');
+ assert.ok(await page.locator('#sheet .note-attachment').isVisible(),'Photo viewer does not close the editor');
+ await page.screenshot({animations:'disabled',path:'ui-smoke-output/note-picture.png'});await page.locator('#sheet .entry-emi:not(.entry-subscriptions) .emi-entry-plans').scrollIntoViewIfNeeded();await page.screenshot({animations:'disabled',path:'ui-smoke-output/entry-emi.png'});
  await page.locator('#sheet .save').click();await page.waitForFunction(()=>!document.querySelector('#sheet').classList.contains('on'));
  assert.equal(await page.evaluate(()=>!!tx.find(x=>x.m==='Receipt test')?.photo),true);
  await page.evaluate(()=>openTransactionEdit(tx.find(x=>x.m==='Receipt test').id));

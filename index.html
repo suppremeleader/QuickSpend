@@ -376,6 +376,33 @@ h1{font-size:30px;font-weight:700;letter-spacing:-.5px;margin-bottom:4px}
 [data-theme="frog"] :is(.pos,.chart-income){color:#286a12!important}
 [data-theme="frog"] :is(.cashflow-chart text,.donut-label){fill:#4d6745}
 [data-theme="frog"] .save{background:#7fd909;color:#203b16}
+
+/* Photo preview: works on existing saved attachments and while editing. */
+.note-preview{position:relative;flex:none;display:grid;place-items:center;padding:0;border:1px solid var(--nav-border);border-radius:11px;background:var(--card);cursor:zoom-in;overflow:hidden}
+.note-preview img{display:block;width:60px;height:60px;object-fit:cover}
+.note-preview-hint{position:absolute;right:2px;bottom:1px;display:grid;place-items:center;width:18px;height:18px;border-radius:50%;background:#ffffffea;color:#203b16;font-size:16px;line-height:1}
+.note-photo-viewer{position:fixed;inset:0;z-index:10000;background:rgba(12,19,13,.96);display:none;align-items:center;justify-content:center;padding:65px 12px 24px}
+.note-photo-viewer.on{display:flex}
+.capture-surface body>#note-photo-viewer.on{display:flex!important}
+.note-photo-viewer img{display:block;max-width:100%;max-height:100%;object-fit:contain;border-radius:6px;touch-action:pinch-zoom}
+.note-viewer-close{position:absolute;right:18px;top:max(18px,env(safe-area-inset-top));z-index:1;min-width:48px;min-height:48px;border-radius:50%;border:1px solid #ffffff70;background:#ffffff;color:#203b16;font-size:29px;cursor:pointer}
+.note-preview:focus-visible,.note-viewer-close:focus-visible{outline:3px solid #7fd909;outline-offset:3px}
+/* Frog v119: bright premium cards, calm negative values, deliberate red only for destructive errors. */
+[data-theme="frog"] .account-edit,
+[data-theme="frog"] .balance-hero .account-edit{background:#fff!important;color:#30581d!important;border:1px solid #cee2bd!important;box-shadow:0 2px 7px #30581d14!important}
+[data-theme="frog"] :is(.neg,.debt-due,.person-top>strong.neg,.insight-hero .neg){color:#203b16!important}
+[data-theme="frog"] :is(.note-remove,.remove,.danger-row b,.danger-row .settings-icon,.account-action-danger){color:#a33d45!important}
+[data-theme="frog"] :is(.note-remove,.danger-row .settings-icon,.account-action-danger){background:#fff5f4!important;border-color:#edcfcc!important}
+[data-theme="frog"] :is(.reset-confirm,.delete-confirm,.danger-btn,.delete-btn){background:#fbebe8!important;color:#92353f!important;border:1px solid #ecc7c3!important;box-shadow:none!important}
+[data-theme="frog"] :is(.reset-confirm,.delete-confirm,.danger-btn,.delete-btn):active{background:#f4d9d5!important}
+[data-theme="frog"] :is(.account-status[data-state="error"],.hint.error,.error-msg){color:#943940!important}
+[data-theme="frog"] :is(.hint,.sub,.section-sub,.sync-line,.feature-label,.category-meta,.detail-meta,.settings-version){color:#4d6745!important}
+[data-theme="frog"] :is(.btn,.chip,.note-attachment,.account-picker button,.category-row,.category-chip,.history-row,.item,.entry-category-row){border-color:#d1e4c3}
+[data-theme="frog"] :is(.account-picker button,.note-attachment,.account-editor-label input,.account-editor-label select){background:#fff!important;color:#203b16!important}
+[data-theme="frog"] .account-edit svg{stroke:#30581d!important}
+[data-theme="frog"] .person-top>strong{color:#203b16!important}
+[data-theme="frog"] .debt-total b{color:#203b16!important}
+[data-theme="frog"] .insight-hero .big{color:#203b16!important}
 </style><link rel="stylesheet" href="assets/ftue.css">
 </head><body>
 <div class="demo"><span>Web · saved in this browser</span><button onclick="sms()">📩 Test quick capture</button><button onclick="ob=0;showOb()">View setup</button></div>
@@ -878,6 +905,27 @@ function closeSheet(back=true){if(entryCategoryTab){closeEntryCategory();return}
 let noteSession=0,noteBusy=false,noteStatus='';
 const NOTE_DATA_LIMIT=180000;
 function noteAttachment(kind,value){if(typeof value!=='string'||value.length>NOTE_DATA_LIMIT)return '';const pattern=kind==='photo'?/^data:image\/(?:jpeg|png|webp);base64,[A-Za-z0-9+/]*={0,2}$/:/^data:audio\/(?:webm|ogg|mp4|mpeg|wav)(?:;codecs=[a-z0-9.,_-]+)?;base64,[A-Za-z0-9+/]*={0,2}$/i;return pattern.test(value)?value:''}
+function viewEntryPicture(){
+ const src=noteAttachment('photo',cur?.photo);
+ if(!src)return;
+ let modal=document.getElementById('note-photo-viewer');
+ if(!modal){
+  modal=document.createElement('div');modal.id='note-photo-viewer';modal.className='note-photo-viewer';
+  modal.setAttribute('role','dialog');modal.setAttribute('aria-modal','true');modal.setAttribute('aria-label','Attached picture');
+  modal.innerHTML='<button class="note-viewer-close" type="button" aria-label="Close enlarged picture">×</button><img alt="Enlarged attached picture">';
+  modal.querySelector('button').onclick=closeEntryPicture;
+  modal.addEventListener('click',e=>{if(e.target===modal)closeEntryPicture()});
+  document.body.appendChild(modal);
+ }
+ modal.querySelector('img').src=src;
+ modal.hidden=false;modal.classList.add('on');
+ modal.querySelector('button').focus();
+}
+function closeEntryPicture(){
+ const modal=document.getElementById('note-photo-viewer');if(!modal)return;
+ modal.classList.remove('on');modal.hidden=true;modal.querySelector('img').removeAttribute('src');
+}
+document.addEventListener('keydown',e=>{if(e.key==='Escape'&&document.getElementById('note-photo-viewer')?.classList.contains('on')){e.preventDefault();closeEntryPicture()}});
 function noteMessage(message){noteStatus=message;const node=$('#note-status');if(node)node.textContent=L(message)}
 function cancelNoteCapture(){noteSession++;noteBusy=false}
 function noteCurrent(owner,session){return cur===owner&&noteSession===session&&$('#sheet').classList.contains('on')&&!!$('#note-status')}
@@ -962,7 +1010,7 @@ function paint(){
  ${isUpiPayment(cur)?`<p class="hint">${escapeAccount(cur.sourceApp||(cur.sourceKey.startsWith('phonepe:')?'PhonePe':'UPI'))} · ${escapeAccount(cur.acc||'')}</p>`:''}
  ${hasPossiblePaymentDuplicate(cur)?`<p class="hint">${L('Possible duplicate. Check the other payment before saving.')}</p>`:''}
  <div class="amtbox">${editing?`<input id="ai" type="number" inputmode="decimal" placeholder="0" value="${cur.a}" oninput="cur.a=this.value">`:`<span>${fm(cur.a)}</span>`}<button class="pen" aria-label="${L(editing?'Done':'Edit')}" onclick="editing=!editing;paint()">${uiIcon(editing?'check':'edit')}</button></div>
- <div class="entry-note"><span>${L('New note')}</span><input maxlength="300" aria-label="${L('Comment')}" placeholder="${L('Optional')}" value="${escapeAccount(cur.note||'')}" oninput="cur.note=this.value"><div class="note-tools entry-tools">${categoryPickerEnabled?`<button type="button" class="note-tool" onclick="openEntryCategory()">${categoryIcon(cur.cat)} ${L('Change category')}</button>`: ''}<button type="button" class="note-tool" onclick="choosePictureSource()">${uiIcon('camera')} ${L('Add picture')}</button></div>${cur.pictureChoices?`<div class="entry-tools picture-sources"><button type="button" class="note-tool" onclick="pickEntryPicture('camera')">${uiIcon('camera')} ${L('Camera')}</button><button type="button" class="note-tool" onclick="pickEntryPicture('browse')">${uiIcon('upload')} ${L('Browse')}</button></div>`:''}<input class="note-file" id="note-picture-camera" type="file" accept="image/*" capture="environment" onchange="addNotePicture(this)"><input class="note-file" id="note-picture" type="file" accept="image/*" onchange="addNotePicture(this)">${voice?`<div class="note-attachment"><audio controls src="${escapeAccount(voice)}"></audio><button class="note-remove" aria-label="${L('Remove voice note')}" onclick="removeNoteAttachment('voice')">×</button></div>`:''}${photo?`<div class="note-attachment"><img src="${escapeAccount(photo)}" alt="${L('Attached picture')}"><span>${L('Picture attached')}</span><button class="note-remove" aria-label="${L('Remove picture')}" onclick="removeNoteAttachment('photo')">×</button></div>`:''}<div class="hint note-status" id="note-status" role="status" aria-live="polite">${escapeAccount(L(noteStatus))}</div></div>
+ <div class="entry-note"><span>${L('New note')}</span><input maxlength="300" aria-label="${L('Comment')}" placeholder="${L('Optional')}" value="${escapeAccount(cur.note||'')}" oninput="cur.note=this.value"><div class="note-tools entry-tools">${categoryPickerEnabled?`<button type="button" class="note-tool" onclick="openEntryCategory()">${categoryIcon(cur.cat)} ${L('Change category')}</button>`: ''}<button type="button" class="note-tool" onclick="choosePictureSource()">${uiIcon('camera')} ${L('Add picture')}</button></div>${cur.pictureChoices?`<div class="entry-tools picture-sources"><button type="button" class="note-tool" onclick="pickEntryPicture('camera')">${uiIcon('camera')} ${L('Camera')}</button><button type="button" class="note-tool" onclick="pickEntryPicture('browse')">${uiIcon('upload')} ${L('Browse')}</button></div>`:''}<input class="note-file" id="note-picture-camera" type="file" accept="image/*" capture="environment" onchange="addNotePicture(this)"><input class="note-file" id="note-picture" type="file" accept="image/*" onchange="addNotePicture(this)">${voice?`<div class="note-attachment"><audio controls src="${escapeAccount(voice)}"></audio><button class="note-remove" aria-label="${L('Remove voice note')}" onclick="removeNoteAttachment('voice')">×</button></div>`:''}${photo?`<div class="note-attachment"><button type="button" class="note-preview" aria-label="Enlarge attached picture" onclick="viewEntryPicture()"><img src="${escapeAccount(photo)}" alt="${L('Attached picture')}"><span class="note-preview-hint">⌕</span></button><span>${L('Picture attached')}</span><button class="note-remove" aria-label="${L('Remove picture')}" onclick="removeNoteAttachment('photo')">×</button></div>`:''}<div class="hint note-status" id="note-status" role="status" aria-live="polite">${escapeAccount(L(noteStatus))}</div></div>
  <div class="seg">${['Expense','Income','Lent','Borrowed'].map(t=>`<div class="${cur.type===t?'on':''}" onclick="cur.type='${t}';cur.cat='Uncategorised';cur.emiPlanIndex=null;cur.emiPlanName=null;cur.subscriptionId=null;cur.emi=0;cur.emiExpanded=false;cur.subscriptionExpanded=false;paint()">${L(t)}</div>`).join('')}</div>
  ${accts.length>1?`<div class="chips" style="margin-bottom:10px">${accts.map((a,i)=>`<button type="button" class="chip ${cur.acc===a.n?'on':''}" aria-pressed="${cur.acc===a.n}" onclick="cur.acc=accts[${i}].n;paint()">${accountIcon(a)} ${escapeAccount(accountLabel(a.n))}</button>`).join('')}</div>`:''}${categoryPickerEnabled?'':`<div class="hd"><span>${L('Categories')}</span><button class="btn" onclick="toggleAdd('cat')">+ ${L('Add category')}</button></div>${adding==='cat'?addbox():''}<div class="chips">${entryCategories().map((c,index)=>`<button type="button" class="chip category-chip ${cur.cat===c[1]?'on':''}" aria-pressed="${cur.cat===c[1]}" onclick="selectEntryCategory(${index})">${categoryIcon(c[1])}<span>${escapeAccount(L(c[1]))}</span></button>`).join('')}</div>`}
  ${need?`<div class="hd"><span>${L("Speed dial")}</span><button class="mini" onclick="toggleAdd('dial')">+</button></div>${adding==='dial'?addbox():''}<div class="dial">${speed.map((n,i)=>`<div class="dl ${cur.who===n?'on':''}" onclick="cur.who=speed[${i}];paint()"><div class="av" style="background:${AVC[i%AVC.length]}">${escapeAccount(n[0].toUpperCase())}</div>${escapeAccount(n)}</div>`).join('')}</div>`:''}
