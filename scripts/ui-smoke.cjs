@@ -28,7 +28,7 @@ const {chromium}=require(process.env.PLAYWRIGHT_MODULE||'playwright'),assert=req
  assert.equal(await page.evaluate(()=>colorMode),'frog','Frog is the clean-install default');
  await frogAudit(['.balance-hero'], 'Home');
  const editCheck=await page.evaluate(()=>{const el=document.querySelector('.account-edit');if(!el)return null;const style=getComputedStyle(el);return{bg:style.backgroundColor,fg:style.color}});
- assert.ok(editCheck&&/rgb\\(255, 255, 255\\)/.test(editCheck.bg),'Account edit button should have a white surface, never black');
+ assert.ok(editCheck&&/rgb\(255, 255, 255\)/.test(editCheck.bg),'Account edit button should have a white surface, never black');
  await page.screenshot({animations:'disabled',path:'ui-smoke-output/frog-home.png'});
  await page.evaluate(()=>{homePage='savings';render()});await frogAudit(['.planning-summary'], 'Savings');
  await page.screenshot({animations:'disabled',path:'ui-smoke-output/frog-savings.png'});
