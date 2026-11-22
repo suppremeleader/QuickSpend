@@ -1,7 +1,7 @@
 name: QuickSpend Photo Viewer and Frog Polish
 on:
   push:
-    branches: [codex/photo-zoom-frog-polish-119]
+    branches: [codex/quick-note-photo-keyboard]
   workflow_dispatch:
     inputs:
       version_code:
@@ -413,6 +413,16 @@ jobs:
             public void clearNativeInbox(PluginCall call) {
               try { SmsStore.clear(getContext()); call.resolve(); }
               catch (Exception e) { call.reject("Could not clear native payment inbox", e); }
+            }
+
+            @PluginMethod
+            public void hideKeyboard(PluginCall call) {
+              getActivity().runOnUiThread(() -> {
+                android.view.View view = getBridge().getWebView();
+                android.view.inputmethod.InputMethodManager ime = getContext().getSystemService(android.view.inputmethod.InputMethodManager.class);
+                if (view != null && ime != null) ime.hideSoftInputFromWindow(view.getWindowToken(), 0);
+                call.resolve();
+              });
             }
 
             @PluginMethod
@@ -1439,6 +1449,11 @@ jobs:
                   try{
                       if("close".equals(action)){collapsePanel();return;}
                       if(UpdatePush.required(this)>0){showRequiredUpdate(item);return;}
+                      if("hideKeyboard".equals(action)){
+                          InputMethodManager ime=getSystemService(InputMethodManager.class);
+                          if(ime!=null)ime.hideSoftInputFromWindow(frame.getWindowToken(),0);
+                          reply.success();return;
+                      }
                       if("picture".equals(action)){pickCapturePhoto(frame,message.optString("source"),reply);return;}
                       if("addCategory".equals(action)){
                           if(demo){reply.success();return;}
@@ -1691,7 +1706,7 @@ jobs:
           assert 'distributionSha256Sum=' not in s, 'Update Gradle checksum before changing the wrapper'
           wrapper.write_text(s)
           raw = os.environ.get('INPUT_VERSION_CODE', '').strip()
-          code = int(raw) if raw else max(2006, 1000 + int(os.environ['GITHUB_RUN_NUMBER']))
+          code = int(raw) if raw else max(2007, 1000 + int(os.environ['GITHUB_RUN_NUMBER']))
           assert 0 < code <= 2100000000, 'versionCode must be a positive Android version code'
           version = os.environ.get('INPUT_VERSION_NAME', '').strip() or json.loads(Path('package.json').read_text())['version'] + '.' + os.environ['GITHUB_RUN_NUMBER']
           assert re.fullmatch(r'[A-Za-z0-9._+-]{1,80}', version), 'Invalid version name'
