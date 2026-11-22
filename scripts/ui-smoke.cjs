@@ -67,6 +67,15 @@ const {chromium}=require(process.env.PLAYWRIGHT_MODULE||'playwright'),assert=req
  assert.equal(await page.getByRole('button',{name:'+ Add new EMI',exact:true}).count(),0,'Collapsed plans are excluded from keyboard/accessibility navigation');
  assert.equal(await page.locator('#sheet .entry-emi:not(.entry-subscriptions)').evaluate(el=>el.open),false,'EMI starts collapsed');assert.equal(await page.getByRole('button',{name:'+ Add new EMI',exact:true}).isVisible(),false);await page.locator('#sheet .entry-emi:not(.entry-subscriptions) summary').click();await page.waitForFunction(()=>cur.emiExpanded);assert.equal(await page.locator('#sheet .entry-emi:not(.entry-subscriptions)').evaluate(el=>el.open),true);
  assert.equal(await page.getByText('Existing EMI',{exact:true}).count(),0);assert.equal(await page.locator('#sheet .entry-emi:not(.entry-subscriptions) .emi-entry-plans').getByRole('button',{name:/Car EMI test/}).count(),1);
+
+ const comment=page.getByRole('textbox',{name:'Comment'});
+ await comment.fill('milk');
+ assert.equal(await comment.getAttribute('enterkeyhint'),'done');
+ await comment.press('Enter');
+ assert.equal(await comment.evaluate(el=>el===document.activeElement),false,'Enter dismisses comment focus');
+ assert.equal(await comment.inputValue(),'milk');
+ assert.equal(await page.evaluate(()=>cur.note),'milk');
+ assert.ok(await page.locator('#sheet.on').isVisible(),'Enter keeps the new entry open');
  await page.getByRole('button',{name:'Add picture',exact:true}).click();
  assert.equal(await page.getByRole('button',{name:'Camera',exact:true}).count(),1);
  assert.equal(await page.getByRole('button',{name:'Browse',exact:true}).count(),1);
@@ -76,14 +85,27 @@ const {chromium}=require(process.env.PLAYWRIGHT_MODULE||'playwright'),assert=req
  assert.equal(await page.getByRole('button',{name:'🎙️ Voice note',exact:true}).count(),0,'Recording remains deferred');
  assert.equal(await page.locator('#sheet .note-attachment img').count(),1);
  await page.getByRole('button',{name:'Enlarge attached picture'}).click();
- assert.equal(await page.locator('#note-photo-viewer.on img').count(),1,'Existing attachment opens full-screen');
+ assert.equal(await page.locator('#note-photo-viewer[open] img').count(),1,'Existing attachment opens full-screen');
  await page.screenshot({animations:'disabled',path:'ui-smoke-output/photo-enlarged.png'});
  await page.keyboard.press('Escape');
- assert.equal(await page.locator('#note-photo-viewer.on').count(),0,'Escape dismisses enlarged photo');
+ assert.equal(await page.locator('#note-photo-viewer[open]').count(),0,'Escape dismisses enlarged photo');
  assert.ok(await page.locator('#sheet .note-attachment').isVisible(),'Photo viewer does not close the editor');
  await page.screenshot({animations:'disabled',path:'ui-smoke-output/note-picture.png'});await page.locator('#sheet .entry-emi:not(.entry-subscriptions) .emi-entry-plans').scrollIntoViewIfNeeded();await page.screenshot({animations:'disabled',path:'ui-smoke-output/entry-emi.png'});
  await page.locator('#sheet .save').evaluate(el=>el.click());await page.waitForFunction(()=>!document.querySelector('#sheet').classList.contains('on'));
  assert.equal(await page.evaluate(()=>!!tx.find(x=>x.m==='Receipt test')?.photo),true);
+
+ await page.locator('[data-t="review"]').click();
+ await page.locator('#s-review .saved-payment').filter({hasText:'Receipt test'}).click();
+ await page.getByRole('button',{name:'Enlarge attached picture'}).click();
+ await page.locator('#note-photo-viewer[open] img').waitFor();
+ assert.ok(await page.locator('#note-photo-viewer img').evaluate(img=>img.complete&&img.naturalWidth>0));
+ await page.evaluate(()=>window.quickSpendSystemBack());
+ assert.equal(await page.locator('#note-photo-viewer[open]').count(),0);
+ assert.ok(await page.locator('#sheet.on').isVisible(),'Android Back closes only the photo in Review');
+ await page.evaluate(()=>closeSheet());
+ await page.waitForFunction(()=>ignoredBacks===0);
+ await page.locator('[data-t="home"]').click();
+ await page.waitForFunction(()=>ignoredBacks===0);
  await page.evaluate(()=>openTransactionEdit(tx.find(x=>x.m==='Receipt test').id));
  assert.equal(await page.locator('#sheet .entry-emi:not(.entry-subscriptions)').evaluate(el=>el.open),false);await page.locator('#sheet .entry-emi:not(.entry-subscriptions) summary').click();await page.waitForFunction(()=>cur.emiExpanded);assert.equal(await page.getByRole('button',{name:'+ Add new EMI',exact:true}).isVisible(),true,'Existing expense exposes EMI actions after expanding');
  await page.locator('#sheet .entry-emi:not(.entry-subscriptions) .emi-entry-plans').getByRole('button',{name:/Car EMI test/}).click();await page.locator('#sheet .save').click();await page.waitForFunction(()=>!document.querySelector('#sheet').classList.contains('on'));
