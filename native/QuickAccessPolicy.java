@@ -23,6 +23,9 @@ public final class QuickAccessPolicy {
         float first=Math.max(top,Math.min(anchorY+(start-origin)*step,bottom-(visible-1)*step));
         return new float[]{start,visible,step,first};
     }
+    /** Space reserved by carouselRail keeps the amount and Cancel outside the category rows. */
+    public static float amountCenter(float[] rail,float density){return rail[3]-49*density;}
+    public static float cancelCenter(float[] rail,float density){return rail[3]+Math.max(0,rail[1]-1)*rail[2]+49*density;}
     public static int target(float x,float y,float width,float height,float band){
         if(width<=0||height<=0||band<=0||!Float.isFinite(x)||!Float.isFinite(y)||x<0||y<0||x>width||y>height)return -1;
         float[] distances={y,width-x,height-y,x};int best=0;

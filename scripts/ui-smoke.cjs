@@ -189,7 +189,11 @@ const {chromium}=require(process.env.PLAYWRIGHT_MODULE||'playwright'),assert=req
  });
  assert.equal(await page.locator('#quick-live .is-selected').count(),1,'A level sideways gesture highlights a category');
  const cancelBox=await page.locator('#quick-live .quick-live-hint').boundingBox();
- assert.ok(cancelBox.y+cancelBox.height/2<phoneBox.y+phoneBox.height-45,'Cancel must be near the category rail');
+ const amountBox=await page.locator('#quick-live .quick-live-amount').boundingBox();
+ const firstTag=await page.locator('#quick-live .quick-slot-preview').first().boundingBox();
+ const lastTag=await page.locator('#quick-live .quick-slot-preview').last().boundingBox();
+ assert.ok(amountBox.y+amountBox.height<=firstTag.y,'Amount has a dedicated header above every category');
+ assert.ok(cancelBox.y>=lastTag.y+lastTag.height&&cancelBox.y+cancelBox.height<=phoneBox.y+phoneBox.height,'Cancel sits below the tags inside the panel');
  await page.mouse.move(cancelBox.x+cancelBox.width/2,cancelBox.y+cancelBox.height/2,{steps:4});
  await page.locator('#quick-live .quick-live-hint.is-active').waitFor();await page.mouse.up();
  assert.equal(await page.locator('#sheet.on').count(),0,'Cancel does not open or save a payment');
@@ -285,13 +289,24 @@ const {chromium}=require(process.env.PLAYWRIGHT_MODULE||'playwright'),assert=req
  assert.equal(await row.locator('.tag-photo').count(),1);
  await tagsPage.reload();
  await tagsPage.evaluate(()=>openSheet({manual:true,m:'New expense',a:20}));
+ const grid=tagsPage.locator('.tag-letters');
+ const letters=await grid.locator('button').evaluateAll(nodes=>nodes.map(node=>{const box=node.getBoundingClientRect();return [box.x,box.y,box.right]}));
+ assert.equal(new Set(letters.map(letter=>letter[1])).size,2,'The full alphabet fits in two lines');
+ assert.ok(await grid.evaluate(node=>node.scrollWidth<=node.clientWidth),'The alphabet does not scroll horizontally');
+ const a=await grid.getByRole('button',{name:'A',exact:true}).boundingBox();
+ const g=await grid.getByRole('button',{name:'G',exact:true}).boundingBox();
+ await tagsPage.mouse.move(a.x+a.width/2,a.y+a.height/2);await tagsPage.mouse.down();
+ assert.equal(await grid.getByRole('button',{name:'A',exact:true}).getAttribute('aria-pressed'),'true');
+ await tagsPage.mouse.move(g.x+g.width/2,g.y+g.height/2,{steps:6});
+ assert.equal(await grid.getByRole('button',{name:'G',exact:true}).getAttribute('aria-pressed'),'true','Drag changes the active letter before release');
+ await tagsPage.mouse.up();
  await tagsPage.locator('.tag-index').getByRole('button',{name:'A',exact:true}).click();
  assert.equal(await tagsPage.locator('.category-chip').count(),1);
  await tagsPage.getByRole('button',{name:'Art supplies',exact:true}).click();
  assert.equal(await tagsPage.evaluate(()=>cur.cat),'Art supplies');
  assert.equal(await tagsPage.getByRole('button',{name:'Art supplies',exact:true}).locator('.tag-photo').count(),1);
  await tagsPage.close();
- const overlay=await browser.newPage({viewport:{width:390,height:650}});
+ const overlay=await browser.newPage({viewport:{width:390,height:650},hasTouch:true});
  const overlayErrors=[];overlay.on('pageerror',e=>overlayErrors.push(e.message));
  const stubPhoto='data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aX1sAAAAASUVORK5CYII=';
  await overlay.addInitScript(photo=>{
@@ -311,7 +326,16 @@ const {chromium}=require(process.env.PLAYWRIGHT_MODULE||'playwright'),assert=req
  }));
  await overlay.getByRole('button',{name:'Change category',exact:true}).click();
  assert.deepEqual(await overlay.locator('.tag-index button').allTextContents(),['All tags',...'ABCDEFGHIJKLMNOPQRSTUVWXYZ']);
- await overlay.locator('.tag-index').getByRole('button',{name:'F',exact:true}).click();
+ const touch=await overlay.context().newCDPSession(overlay);
+ const center=async letter=>{
+  const box=await overlay.locator('.tag-letters').getByRole('button',{name:letter,exact:true}).boundingBox();
+  return {x:box.x+box.width/2,y:box.y+box.height/2}
+ };
+ await touch.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[await center('A')]});
+ for(const letter of ['B','C','D','E','F'])await touch.send('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:[await center(letter)]});
+ assert.equal(await overlay.locator('.tag-letters').getByRole('button',{name:'F',exact:true}).getAttribute('aria-pressed'),'true','Touch slide changes letters in the floater');
+ await touch.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});
+
  assert.equal(await overlay.getByRole('button',{name:'Shopping',exact:true}).count(),0);
  await overlay.getByRole('button',{name:'Food',exact:true}).click();
  await overlay.getByRole('textbox',{name:'Comment'}).fill('Keep this draft');
