@@ -6,11 +6,11 @@ const {app,settle}=require('./app-inbox.cjs');
  a.inbox.items=[];a.eval('tx=[];pending=[];recur=[]');
  const bankSms=(sourceKey,suffix)=>({sourceKey,from:'VK-HDFCBK-S',body:'Rs.125 debited '+(suffix?'from A/c XX'+suffix+' ':'')+'at Shop on today',ts:Date.now()});
  a.inbox.items.push(bankSms('first','1234'));await a.c.pull(true);
- a.eval("openSheet(pending.find(p=>p.sourceKey==='first'));cur.acc='Cash';save()");await settle();
+ a.eval("openSheet(pending.find(p=>p.sourceKey==='first'));chooseEntryAccount(1);save()");await settle();
  assert.equal(a.eval("bankAccounts['hdfc:1234'].account"),'Cash');
  a.inbox.items.push(bankSms('same-card','1234'),bankSms('different-card','9876'),bankSms('no-digits',''));
  await a.c.pull(true);
- for(const [key,account] of [['same-card','Cash'],['different-card','HDFC 9876'],['no-digits','Cash']]){
+ for(const [key,account] of [['same-card','Cash'],['different-card','Main account'],['no-digits','Cash']]){
   a.eval(`openSheet(pending.find(p=>p.sourceKey==='${key}'))`);
   assert.equal(a.eval('cur.acc'),account,key)
  }
@@ -19,7 +19,7 @@ const {app,settle}=require('./app-inbox.cjs');
  assert.equal(a.eval("bankAccounts['hdfc:1234'].account"),'Everyday');
  const restored=app({savedLanguage:'en',savedState:a.eval("localStorage.getItem('qs1')")});await settle();
  assert.equal(restored.eval("bankAccountFor('hdfc:1234','HDFC 1234')"),'Everyday');
- a.eval("openSheet(pending.find(p=>p.sourceKey==='same-card'));cur.acc='Main account'");
+ a.eval("openSheet(pending.find(p=>p.sourceKey==='same-card'));chooseEntryAccount(0)");
  const persist=a.c.persist;a.c.persist=()=>false;a.c.save();a.c.persist=persist;
  assert.equal(a.eval("bankAccounts['hdfc:1234'].account"),'Everyday','Failed save must not learn the account');
  a.c.initialiseCapture({
@@ -28,6 +28,31 @@ const {app,settle}=require('./app-inbox.cjs');
   bankAccounts:{'hdfc:1234':{account:'Everyday',updatedAt:Date.now()+1000}},language:'en',colorMode:'dark',categoryPicker:false
  });
  assert.equal(a.eval('cur.acc'),'Everyday','Shared floater renderer uses the bank choice from native state');
+
+ const routing=app({savedLanguage:'en'});await settle();
+ routing.eval("accts.push({n:'SBI',i:'🏦'},{n:'HDFC 4567',i:'🏦'},{n:'Personal',i:'🏦'});pending=[];tx=[]");
+ assert.equal(routing.c.changeAccount(2,'Adi account'),true);
+ const incoming=(sourceKey,from,body)=>({sourceKey,from,body,ts:Date.now()});
+ routing.inbox.items=[
+  incoming('sbi-in','VK-SBIUPI-S','Your a/c ending in 7890 credited by Rs.95'),
+  incoming('hdfc-out','VK-HDFCBK-S','Rs.125 debited from card **4567'),
+  incoming('other-hdfc','VK-HDFCBK-S','Rs.25 debited from card **5555'),
+  incoming('unmatched','VK-ICICIB-S','Rs.99 debited from Account XX2323')
+ ];
+ routing.inbox.entries=[{nativeKey:'old-auto',t:'Expense',a:440,m:'Shop',c:'Food',acc:'SBI 7890',smsFrom:'VK-SBIUPI-S',smsBody:'Rs.440 debited from A/c XX7890'}];
+ await routing.c.pull(true);
+ assert.equal(routing.eval("pending.find(p=>p.sourceKey==='sbi-in').bankKey"),'sbi:7890');
+ assert.equal(routing.eval("pending.find(p=>p.sourceKey==='sbi-in').acc"),'Adi account');
+ assert.equal(routing.eval("pending.find(p=>p.sourceKey==='hdfc-out').acc"),'HDFC 4567');
+ assert.equal(routing.eval("pending.find(p=>p.sourceKey==='other-hdfc').acc"),'Main account');
+ assert.equal(routing.eval("pending.find(p=>p.sourceKey==='unmatched').acc"),'Main account');
+ assert.equal(routing.eval("tx.find(p=>p.nativeKey==='old-auto').acc"),'Adi account');
+ assert.deepEqual(JSON.parse(routing.eval("JSON.stringify(accts.map(a=>a.n))")),['Main account','Cash','Adi account','HDFC 4567','Personal']);
+ assert.equal(routing.eval("safeCloudData().accts.find(a=>a.n==='Adi account').smsBank"),'sbi');
+ routing.eval("openSheet(pending.find(p=>p.sourceKey==='unmatched'));save()");await settle();
+ assert.equal(routing.eval("bankAccounts['icici:2323']"),undefined,'An unrecognized fallback does not create a remembered bank link');
+ const afterRename=app({savedLanguage:'en',savedState:routing.eval("localStorage.getItem('qs1')")});await settle();
+ assert.equal(afterRename.c.bankAccountFor('sbi:7890','SBI 7890'),'Adi account');
 
  const b=app({savedLanguage:'en'});await settle();b.eval('tx=[];pending=[];recur=[]');
  const records=[{id:80,sourceKey:'sms-a',ts:1763000000000,a:100,m:'Cafe',t:'Expense',acc:'Cash'},

@@ -1,7 +1,7 @@
 /* Real Chromium smoke check. Isolated CI dependency; no production packages. */
 const {chromium}=require(process.env.PLAYWRIGHT_MODULE||'playwright'),assert=require('assert'),path=require('path'),fs=require('fs');
 (async()=>{
- const browser=await chromium.launch({headless:true});try{
+ const browser=await chromium.launch({headless:true,executablePath:process.env.CHROMIUM_EXECUTABLE||undefined});try{
  const page=await browser.newPage({viewport:{width:390,height:844},deviceScaleFactor:1});page.setDefaultTimeout(30000);page.setDefaultNavigationTimeout(30000);const errors=[];page.on('pageerror',e=>errors.push(e.message));
  await page.addInitScript(()=>{
   for(const key of ['qs_ob','qs_p2','qs_account_setup'])localStorage.setItem(key,'1');localStorage.setItem('qs_language','en');
@@ -87,8 +87,8 @@ const {chromium}=require(process.env.PLAYWRIGHT_MODULE||'playwright'),assert=req
  await page.getByRole('button',{name:'Enlarge attached picture'}).click();
  assert.equal(await page.locator('#note-photo-viewer[open] img').count(),1,'Existing attachment opens full-screen');
  await page.screenshot({animations:'disabled',path:'ui-smoke-output/photo-enlarged.png'});
- await page.keyboard.press('Escape');
- assert.equal(await page.locator('#note-photo-viewer[open]').count(),0,'Escape dismisses enlarged photo');
+ await page.getByRole('button',{name:'Close enlarged picture'}).click();
+ assert.equal(await page.locator('#note-photo-viewer[open]').count(),0,'Close button dismisses the enlarged photo');
  assert.ok(await page.locator('#sheet .note-attachment').isVisible(),'Photo viewer does not close the editor');
  await page.screenshot({animations:'disabled',path:'ui-smoke-output/note-picture.png'});await page.locator('#sheet .entry-emi:not(.entry-subscriptions) .emi-entry-plans').scrollIntoViewIfNeeded();await page.screenshot({animations:'disabled',path:'ui-smoke-output/entry-emi.png'});
  await page.locator('#sheet .save').evaluate(el=>el.click());await page.waitForFunction(()=>!document.querySelector('#sheet').classList.contains('on'));
@@ -267,6 +267,30 @@ const {chromium}=require(process.env.PLAYWRIGHT_MODULE||'playwright'),assert=req
  await page.locator('[data-t="home"]').click();await page.screenshot({animations:'disabled',path:'ui-smoke-output/aurora-home.png'});
  await page.evaluate(()=>{ob=0;showOb()});assert.equal(await page.locator('#onb img').count(),0);await page.screenshot({animations:'disabled',path:'ui-smoke-output/setup.png'});
  const overflow=await page.locator('#onb').evaluate(el=>el.scrollWidth>el.clientWidth+1);assert.equal(overflow,false,'Setup must fit phone width');assert.deepEqual(errors,[]);
+ const tagsPage=await browser.newPage({viewport:{width:390,height:844}});
+ await tagsPage.addInitScript(()=>{for(const key of ['qs_ob','qs_p2','qs_account_setup'])localStorage.setItem(key,'1');localStorage.setItem('qs_language','en')});
+ await tagsPage.goto('file://'+path.join(process.cwd(),'index.html'));
+ await tagsPage.evaluate(()=>openData());
+ await tagsPage.getByRole('button',{name:/Edit tags/}).click();
+ await tagsPage.getByRole('button',{name:'+ Add tag',exact:true}).click();
+ await tagsPage.getByRole('textbox',{name:'Name',exact:true}).fill('Art supplies');
+ await tagsPage.getByRole('button',{name:'Shopping',exact:true}).click();
+ await tagsPage.getByRole('button',{name:'Save',exact:true}).click();
+ const row=tagsPage.getByRole('button',{name:'Art supplies',exact:true});
+ assert.equal(await row.locator('[data-icon="bag"]').count(),1);
+ await row.click();
+ await tagsPage.locator('#tag-photo').setInputFiles({name:'tag.png',mimeType:'image/png',buffer:fs.readFileSync('assets/quickspend-icon.png')});
+ await tagsPage.locator('.tag-editor-photo').waitFor();
+ await tagsPage.getByRole('button',{name:'Save',exact:true}).click();
+ assert.equal(await row.locator('.tag-photo').count(),1);
+ await tagsPage.reload();
+ await tagsPage.evaluate(()=>openSheet({manual:true,m:'New expense',a:20}));
+ await tagsPage.locator('.tag-index').getByRole('button',{name:'A',exact:true}).click();
+ assert.equal(await tagsPage.locator('.category-chip').count(),1);
+ await tagsPage.getByRole('button',{name:'Art supplies',exact:true}).click();
+ assert.equal(await tagsPage.evaluate(()=>cur.cat),'Art supplies');
+ assert.equal(await tagsPage.getByRole('button',{name:'Art supplies',exact:true}).locator('.tag-photo').count(),1);
+ await tagsPage.close();
  const overlay=await browser.newPage({viewport:{width:390,height:650}});
  const overlayErrors=[];overlay.on('pageerror',e=>overlayErrors.push(e.message));
  const stubPhoto='data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aX1sAAAAASUVORK5CYII=';
@@ -286,6 +310,9 @@ const {chromium}=require(process.env.PLAYWRIGHT_MODULE||'playwright'),assert=req
   categories:{},customCategories:{},emiPlans:[{index:3,name:'Car loan',left:5,a:400}],subscriptions:[{id:'sub1',name:'Example',status:'active',cents:19900}]
  }));
  await overlay.getByRole('button',{name:'Change category',exact:true}).click();
+ assert.deepEqual(await overlay.locator('.tag-index button').allTextContents(),['All tags',...'ABCDEFGHIJKLMNOPQRSTUVWXYZ']);
+ await overlay.locator('.tag-index').getByRole('button',{name:'F',exact:true}).click();
+ assert.equal(await overlay.getByRole('button',{name:'Shopping',exact:true}).count(),0);
  await overlay.getByRole('button',{name:'Food',exact:true}).click();
  await overlay.getByRole('textbox',{name:'Comment'}).fill('Keep this draft');
  await overlay.getByRole('button',{name:'Add picture',exact:true}).click();
@@ -294,6 +321,12 @@ const {chromium}=require(process.env.PLAYWRIGHT_MODULE||'playwright'),assert=req
  assert.equal(await overlay.getByRole('textbox',{name:'Comment'}).inputValue(),'Keep this draft','Cancelled camera returns to the same draft');
  await overlay.getByRole('button',{name:'Browse',exact:true}).click();
  await overlay.locator('.note-attachment img').waitFor();
+ await overlay.getByRole('button',{name:'Enlarge attached picture'}).click();
+ await overlay.locator('#note-photo-viewer[open] img').waitFor();
+ await overlay.getByRole('button',{name:'Close enlarged picture'}).click();
+ assert.equal(await overlay.locator('#note-photo-viewer[open]').count(),0);
+ assert.ok(await overlay.locator('#sheet.on').isVisible());
+ assert.equal(await overlay.evaluate(()=>captureActions.some(x=>x.action==='close')),false,'Close photo never closes the floating entry');
  await overlay.locator('.entry-subscriptions summary').click();
  await overlay.getByRole('button',{name:/Example/}).click();
  await overlay.screenshot({animations:'disabled',path:'ui-smoke-output/shared-floater-entry.png'});

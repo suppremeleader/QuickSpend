@@ -1,7 +1,7 @@
 name: QuickSpend Photo Viewer and Frog Polish
 on:
   push:
-    branches: [codex/quick-note-photo-keyboard]
+    branches: [codex/sms-account-tag-fixes]
   workflow_dispatch:
     inputs:
       version_code:
@@ -807,7 +807,7 @@ jobs:
                               entry.put("sourceKey", sourceKey).put("nativeKey", sourceKey);
                               saved.put(entry);
                               String bankKey=entry.optString("bankKey"),name=entry.optString("acc");
-                              if(bankKeyValid(bankKey)&&!name.isEmpty()&&name.length()<=60){
+                              if(entry.optBoolean("learnAccount")&&bankKeyValid(bankKey)&&!name.isEmpty()&&name.length()<=60){
                                   JSONObject accounts=bankAccounts(p),before=accounts.optJSONObject(bankKey);
                                   long stamp=Math.max(System.currentTimeMillis(),before==null?0:before.optLong("updatedAt")+1);
                                   accounts.put(bankKey,new JSONObject().put("account",name).put("updatedAt",stamp));
@@ -1267,6 +1267,7 @@ jobs:
                   try {
                       JSONObject item=quickItem;PaymentParser payment=quickPayment;String category=quickCategories[slot];
                       JSONObject entry=new JSONObject().put("t",payment.type).put("a",payment.amount).put("note","").put("c",category).put("m",payment.merchant).put("who","").put("ts",item.optLong("ts",System.currentTimeMillis())).put("settled",0).put("smsFrom",item.optString("from")).put("smsBody",item.optString("body"));
+                      if(item.has("account"))entry.put("reportedAccount",item.optString("account"));
                       dismissingBubble=true;
                       boolean saved=SmsStore.complete(this,SmsStore.key(item),item.optBoolean("demo")?null:entry);
                       String message=item.optBoolean("demo")?"Preview only. No record added.":saved?"Good job! Payment logged.":"This payment was already handled";
@@ -1386,7 +1387,7 @@ jobs:
                   try{windows.addView(frame,lp);panel=frame;}catch(RuntimeException e){panelKey=null;updateOverlay();}
               }
               private CaptureEntryView captureEntry;
-              private boolean capturePhotoOpen;
+              private boolean capturePhotoOpen, captureViewerOpen;
               private void openCaptureInApp(JSONObject item,JSONObject draft,String planning) {
                   Intent review=new Intent(this,MainActivity.class)
                       .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_CLEAR_TOP|Intent.FLAG_ACTIVITY_SINGLE_TOP)
@@ -1406,7 +1407,7 @@ jobs:
                   for(String type:new String[]{"Expense","Income","Lent","Borrowed"})categories.put(type,new org.json.JSONArray(CaptureCatalog.labels(this,type)));
                   return new JSONObject().put("payment",payment).put("bankAccounts",SmsStore.mergeBankAccounts(this,null)).put("sender",item.optString("from")).put("body",item.optString("body")).put("categories",categories)
                       .put("accounts",CaptureCatalog.entryChoices(this,"accounts")).put("people",CaptureCatalog.entryChoices(this,"people"))
-                      .put("customCategories",CaptureCatalog.custom(this)).put("categoryPicker",QsLanguage.categoryPicker(this))
+                      .put("customCategories",CaptureCatalog.custom(this)).put("tagLooks",CaptureCatalog.tagLooks(this)).put("categoryPicker",QsLanguage.categoryPicker(this))
                       .put("emiPlans",PlanningBridge.choices(this,"emiPlans")).put("subscriptions",PlanningBridge.choices(this,"subscriptions"))
                       .put("language",QsLanguage.get(this)).put("colorMode",QsLanguage.colorMode(this));
               }
@@ -1425,7 +1426,7 @@ jobs:
                       PixelFormat.TRANSLUCENT);
                   lp.gravity=Gravity.BOTTOM|Gravity.CENTER_HORIZONTAL;
                   lp.softInputMode=WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE;
-                  frame.setOnTouchListener((v,event)->{if(event.getAction()==MotionEvent.ACTION_OUTSIDE&&!capturePhotoOpen){collapsePanel();return true;}return false;});
+                  frame.setOnTouchListener((v,event)->{if(event.getAction()==MotionEvent.ACTION_OUTSIDE&&!capturePhotoOpen&&!captureViewerOpen){collapsePanel();return true;}return false;});
                   ViewCompat.setOnApplyWindowInsetsListener(frame,(v,insets)->{
                       int top=insets.getInsets(WindowInsetsCompat.Type.systemBars()).top;
                       int bottom=Math.max(insets.getInsets(WindowInsetsCompat.Type.systemBars()).bottom,insets.getInsets(WindowInsetsCompat.Type.ime()).bottom);
@@ -1448,6 +1449,7 @@ jobs:
                   boolean demo=item.optBoolean("demo");
                   try{
                       if("close".equals(action)){collapsePanel();return;}
+                      if("photoViewer".equals(action)){captureViewerOpen=message.optBoolean("open");reply.success();return;}
                       if(UpdatePush.required(this)>0){showRequiredUpdate(item);return;}
                       if("hideKeyboard".equals(action)){
                           InputMethodManager ime=getSystemService(InputMethodManager.class);
@@ -1498,7 +1500,7 @@ jobs:
                   String account=draft.optString("account");
                   if(!account.isEmpty()&&account.length()<=60)entry.put("acc",account);
                   String bankKey=draft.optString("bankKey");
-                  if(SmsStore.bankKeyValid(bankKey))entry.put("bankKey",bankKey);
+                  if(SmsStore.bankKeyValid(bankKey))entry.put("bankKey",bankKey).put("learnAccount",draft.optBoolean("learnAccount"));
                   if(photo.length()<=180000&&photo.matches("^data:image/(?:jpeg|png|webp);base64,[A-Za-z0-9+/]+={0,2}$"))entry.put("photo",photo);
                   if("Expense".equals(type)){
                       int emiIndex=draft.optInt("emiIndex",-1);
@@ -1544,7 +1546,7 @@ jobs:
                   if(captureEntry==null)return;
                   android.view.ViewParent parent=captureEntry.getParent();
                   if(parent instanceof LinearLayout)((LinearLayout)parent).removeView(captureEntry);
-                  captureEntry.stopLoading();captureEntry.destroy();captureEntry=null;capturePhotoOpen=false;
+                  captureEntry.stopLoading();captureEntry.destroy();captureEntry=null;capturePhotoOpen=false;captureViewerOpen=false;
               }
               private void collapsePanel() {
                   if (panel == null) return;
@@ -1706,7 +1708,7 @@ jobs:
           assert 'distributionSha256Sum=' not in s, 'Update Gradle checksum before changing the wrapper'
           wrapper.write_text(s)
           raw = os.environ.get('INPUT_VERSION_CODE', '').strip()
-          code = int(raw) if raw else max(2007, 1000 + int(os.environ['GITHUB_RUN_NUMBER']))
+          code = int(raw) if raw else max(2008, 1000 + int(os.environ['GITHUB_RUN_NUMBER']))
           assert 0 < code <= 2100000000, 'versionCode must be a positive Android version code'
           version = os.environ.get('INPUT_VERSION_NAME', '').strip() or json.loads(Path('package.json').read_text())['version'] + '.' + os.environ['GITHUB_RUN_NUMBER']
           assert re.fullmatch(r'[A-Za-z0-9._+-]{1,80}', version), 'Invalid version name'

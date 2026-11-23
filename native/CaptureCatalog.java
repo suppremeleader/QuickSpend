@@ -19,6 +19,7 @@ public final class CaptureCatalog {
     private static String[] defaults(String type){return "Expense".equals(type)?new String[]{"Uncategorised","Food","Travel","Shopping","Bills","Fun","Health","Other"}:"Income".equals(type)?new String[]{"Uncategorised","Salary","Gift","Refund","Other"}:new String[]{"Uncategorised","Friend","Family"};}
     public static boolean valid(String value){return value!=null&&!value.trim().isEmpty()&&value.trim().length()<=40&&!value.matches(".*[<>\"'\\p{Cntrl}].*")&&!Arrays.asList("__proto__","constructor","prototype","Savings").contains(value.trim());}
     public static synchronized JSONObject custom(Context c){return object(prefs(c).getString("custom","{}"));}
+    public static synchronized JSONObject tagLooks(Context c){return object(prefs(c).getString("tagLooks","{}"));}
     private static boolean contains(List<String> names,String value){for(String n:names)if(n.equalsIgnoreCase(value))return true;return false;}
     public static synchronized List<String> labels(Context c,String type){List<String> result=new ArrayList<>(Arrays.asList(defaults(type)));JSONArray extra=custom(c).optJSONArray(type);if(extra!=null)for(int i=0;i<extra.length();i++){String name=extra.optString(i);if(valid(name)&&!contains(result,name))result.add(name);}JSONObject scores=month().equals(prefs(c).getString("month",""))?object(prefs(c).getString("scores","{}")):new JSONObject();JSONObject typed=scores.optJSONObject(type);if(typed!=null)result.sort((a,b)->{JSONArray x=typed.optJSONArray(a),y=typed.optJSONArray(b);int amount=Double.compare(y==null?0:y.optDouble(0),x==null?0:x.optDouble(0));return amount!=0?amount:Integer.compare(y==null?0:y.optInt(1),x==null?0:x.optInt(1));});return result;}
     public static synchronized boolean add(Context c,String type,String raw){String name=raw.trim();if(!Arrays.asList(TYPES).contains(type)||!valid(name)||contains(labels(c,type),name))return false;try{JSONObject data=custom(c);JSONArray names=data.optJSONArray(type);if(names==null)names=new JSONArray();names.put(name);data.put(type,names);if(!prefs(c).edit().putString("custom",data.toString()).commit())throw new IllegalStateException("Could not save category");return true;}catch(JSONException e){throw new IllegalStateException(e);}}
@@ -28,6 +29,8 @@ public final class CaptureCatalog {
     public static synchronized JSONObject sync(Context c,JSONObject config){JSONObject incoming=config.optJSONObject("customCats");if(incoming!=null)for(String type:TYPES){JSONArray names=incoming.optJSONArray(type);if(names!=null)for(int i=0;i<names.length();i++){String name=names.optString(i);if(valid(name)&&!contains(labels(c,type),name))add(c,type,name);}}
         JSONObject scores=config.optJSONObject("scores");
         SharedPreferences.Editor edit=prefs(c).edit();
+        JSONObject looks=config.optJSONObject("tagLooks");
+        if(looks!=null&&looks.toString().length()<=900000)edit.putString("tagLooks",looks.toString());
         if(scores!=null)edit.putString("scores",scores.toString()).putString("month",month());
         for(String key:new String[]{"accounts","people"}){
             JSONArray choices=config.optJSONArray(key);
