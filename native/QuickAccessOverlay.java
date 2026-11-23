@@ -3,7 +3,6 @@ import android.content.Context;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
-import android.graphics.Path;
 import android.graphics.Typeface;
 import android.text.TextUtils;
 import android.view.View;
@@ -11,7 +10,7 @@ import android.view.View;
 public final class QuickAccessOverlay extends View {
     private final Paint p=new Paint(Paint.ANTI_ALIAS_FLAG);
     private final String[] labels;
-    private final String amount,type,cancel;
+    private final String amount,cancel;
     private final boolean light;
     private boolean dismissMode;
     public boolean targetActive;
@@ -20,8 +19,8 @@ public final class QuickAccessOverlay extends View {
     private final float[] emphasis;
     private boolean firstDraw=true;
     private float d(float n){return n*getResources().getDisplayMetrics().density;}
-    public QuickAccessOverlay(Context c,String[] labels,String amount,String type,boolean light){super(c);this.labels=labels;this.amount=amount;this.type=type;this.light=light;emphasis=new float[labels.length];cancel="×  "+QsLanguage.tr(c,"Cancel");setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_NO);}
-    public QuickAccessOverlay(Context c,boolean light){this(c,new String[0],"","",light);dismissMode=true;}
+    public QuickAccessOverlay(Context c,String[] labels,String amount,boolean light){super(c);this.labels=labels;this.amount=amount;this.light=light;emphasis=new float[labels.length];cancel="×  "+QsLanguage.tr(c,"Cancel");setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_NO);}
+    public QuickAccessOverlay(Context c,boolean light){this(c,new String[0],"",light);dismissMode=true;}
     private void pill(Canvas c,String value,float x,float y,float maxWidth,int color,boolean active){
         p.setShader(null);p.setTypeface(Typeface.create("sans-serif-medium",Typeface.NORMAL));p.setTextSize(d(14));
         String text=TextUtils.ellipsize(value,new android.text.TextPaint(p),maxWidth-d(28),TextUtils.TruncateAt.END).toString();float w=Math.min(maxWidth,p.measureText(text)+d(28)),h=d(44);
@@ -38,56 +37,40 @@ public final class QuickAccessOverlay extends View {
         int origin=QuickAccessPolicy.visibleOrigin(labels.length,getHeight(),bubbleY+d(30),density);
         return QuickAccessPolicy.slideTarget(dx,dy,labels.length,QuickAccessPolicy.carouselStep(getHeight(),density,labels.length),origin,d(18),targetActive);
     }
-    public float[] categoryPosition(int index){
-        float density=getResources().getDisplayMetrics().density,w=getWidth();
-        float[] rail=QuickAccessPolicy.carouselRail(labels.length,selected,getHeight(),bubbleY+d(30),density);
-        float visible=rail[1],offset=index-rail[0],norm=visible<=1?0:Math.min(1,Math.abs(offset-(visible-1)/2)/Math.max(1,(visible-1)/2));
-        float maxWidth=Math.min(w*.48f,d(190)),direction=bubbleX<maxWidth+d(30)?1:-1;
-        float x=bubbleX+d(30)+direction*(d(125)-d(30)*norm*norm);
-        x=Math.max(maxWidth/2+d(8),Math.min(x,w-maxWidth/2-d(8)));
-        return new float[]{x,rail[3]+offset*rail[2]};
+    private float railWidth(){return Math.min(getWidth()*.59f,d(220));}
+    private float railX(){
+        float width=railWidth(),edge=width/2+d(14),anchor=bubbleX+d(30);
+        float preferred=anchor+(anchor<getWidth()/2?1:-1)*(width/2+d(40));
+        return Math.max(edge,Math.min(preferred,getWidth()-edge));
     }
-    /** Keep Cancel next to the category rail, within the same thumb-reach area. */
-    public float[] cancelPosition(){
-        float[] rail=QuickAccessPolicy.carouselRail(labels.length,selected,getHeight(),bubbleY+d(30),getResources().getDisplayMetrics().density);
-        if(rail[1]<1)return new float[]{getWidth()/2,getHeight()-d(34)};
-        int first=(int)rail[0],last=first+(int)rail[1]-1;
-        float[] top=categoryPosition(first),bottom=categoryPosition(last);
-        boolean below=bottom[1]+d(52)<=getHeight()-d(24);
-        float y=below?bottom[1]+d(52):top[1]-d(52);
-        if(y<d(24)||y>getHeight()-d(24))y=below?getHeight()-d(30):d(30);
-        float x=Math.max(d(72),Math.min(getWidth()-d(72),below?bottom[0]:top[0]));
-        return new float[]{x,y};
+    private float[] rail(){
+        return QuickAccessPolicy.carouselRail(labels.length,selected,getHeight(),bubbleY+d(30),getResources().getDisplayMetrics().density);
+    }
+    public float[] categoryPosition(int index){
+        float[] rail=rail();
+        return new float[]{railX(),rail[3]+(index-rail[0])*rail[2]};
+    }
+    private float[] cancelPosition(){
+        float[] rail=rail();
+        return new float[]{railX(),QuickAccessPolicy.cancelCenter(rail,getResources().getDisplayMetrics().density)};
+    }
+    private void drawAmount(Canvas canvas,float x,float y,float width){
+        p.setStyle(Paint.Style.FILL);p.setShader(null);p.setColor(light?0xfff4faeb:0xff252f22);
+        canvas.drawRoundRect(x-width/2,y-d(20),x+width/2,y+d(20),d(13),d(13),p);
+        p.setTypeface(Typeface.create("sans-serif",Typeface.BOLD));p.setTextSize(d(22));
+        String shown=TextUtils.ellipsize(amount,new android.text.TextPaint(p),width-d(20),TextUtils.TruncateAt.END).toString();
+        p.setColor(light?0xff24391a:0xffdcf8ae);
+        canvas.drawText(shown,x-p.measureText(shown)/2,y-(p.ascent()+p.descent())/2,p);
     }
     private void categoryPill(Canvas c,String category,float x,float y,float width,boolean active,float focus){
-        float h=d(40+12*focus),expandedWidth=width+d(14)*focus;
-        width=expandedWidth;p.setShader(null);p.setStyle(Paint.Style.FILL);p.setColor(active?(light?0xff191919:0xffc9f36b):(light?0xfff8f8f8:0xff20252b));c.drawRoundRect(x-width/2,y-h/2,x+width/2,y+h/2,d(22),d(22),p);
-        p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(d(active?2:1));p.setColor(active?(light?0xff191919:0xffc9f36b):(light?0xffdedede:0xff3b4249));c.drawRoundRect(x-width/2,y-h/2,x+width/2,y+h/2,d(22),d(22),p);p.setStyle(Paint.Style.FILL);
+        float h=d(36+10*focus),expandedWidth=width+d(10)*focus;
+        width=expandedWidth;p.setShader(null);p.setStyle(Paint.Style.FILL);p.setColor(active?(light?0xffd9efa9:0xffc9f36b):(light?0xfff8f8f8:0xff20252b));c.drawRoundRect(x-width/2,y-h/2,x+width/2,y+h/2,d(22),d(22),p);
+        p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(d(active?2:1));p.setColor(active?(light?0xff6c8d39:0xffc9f36b):(light?0xffdedede:0xff3b4249));c.drawRoundRect(x-width/2,y-h/2,x+width/2,y+h/2,d(22),d(22),p);p.setStyle(Paint.Style.FILL);
         float icon=d(24+11*focus);
         CategorySymbols.draw(getContext(),c,category,x-width/2+d(22)-icon/2,y-icon/2,icon);
-        p.setTypeface(Typeface.create("sans-serif-medium",Typeface.NORMAL));p.setTextSize(d(13+2*focus));p.setColor(active?(light?Color.WHITE:0xff181818):(light?0xff181818:Color.WHITE));
+        p.setTypeface(Typeface.create("sans-serif-medium",Typeface.NORMAL));p.setTextSize(d(13+2*focus));p.setColor(active?(light?0xff24391a:0xff181818):(light?0xff181818:Color.WHITE));
         String label=TextUtils.ellipsize(QsLanguage.tr(getContext(),category),new android.text.TextPaint(p),Math.max(d(8),width-d(52)),TextUtils.TruncateAt.END).toString();
         c.drawText(label,x-width/2+d(43),y-(p.ascent()+p.descent())/2,p);
-    }
-    private void drawCategoryRail(Canvas canvas,int start,int visible,float width){
-        Path curve=new Path();
-        float markerX=0,markerY=0;
-        float direction=bubbleX<width+d(30)?-1:1;
-        for(int index=start;index<start+visible;index++){
-            float[] point=categoryPosition(index);
-            float x=Math.max(d(4),Math.min(getWidth()-d(4),point[0]+direction*(width/2+d(5))));
-            if(index==start)curve.moveTo(x,point[1]);else curve.lineTo(x,point[1]);
-            if(index==selected){markerX=x;markerY=point[1];}
-        }
-        p.setStyle(Paint.Style.STROKE);
-        p.setStrokeWidth(d(1.5f));
-        p.setColor(light?0xff757575:0xff82916c);
-        canvas.drawPath(curve,p);
-        p.setStyle(Paint.Style.FILL);
-        if(selected>=start&&selected<start+visible){
-            p.setColor(light?0xff191919:0xffc9f36b);
-            canvas.drawCircle(markerX,markerY,d(3.5f),p);
-        }
     }
     @Override protected void onDraw(Canvas c){
         super.onDraw(c);float w=getWidth(),h=getHeight();
@@ -97,11 +80,14 @@ public final class QuickAccessOverlay extends View {
             pill(c,QsLanguage.tr(getContext(),"Keep in Review"),x,y-d(65),w-d(24),0xffff9995,false);return;
         }
         if(labels.length>0){
-            float[] rail=QuickAccessPolicy.carouselRail(labels.length,selected,h,bubbleY+d(30),getResources().getDisplayMetrics().density);
+            float[] rail=rail();
             int start=(int)rail[0],visible=(int)rail[1];
-            float width=Math.min(w*.48f,d(190));
-            c.drawColor(light?0x18000000:0x38000000);
-            drawCategoryRail(c,start,visible,width);
+            float width=railWidth(),density=getResources().getDisplayMetrics().density,x=railX();
+            float amountY=QuickAccessPolicy.amountCenter(rail,density),cancelY=QuickAccessPolicy.cancelCenter(rail,density);
+            c.drawColor(0x650c100d);
+            p.setShader(null);p.setStyle(Paint.Style.FILL);p.setColor(light?0xfffdfefb:0xff171c19);
+            c.drawRoundRect(x-width/2-d(8),amountY-d(26),x+width/2+d(8),cancelY+d(27),d(21),d(21),p);
+            drawAmount(c,x,amountY,width);
             boolean animating=false;
             for(int i=start;i<start+visible;i++){
                 float target=i==selected?1f:0f;
@@ -121,17 +107,5 @@ public final class QuickAccessOverlay extends View {
             float[] close=cancelPosition();
             pill(c,cancel,close[0],close[1],Math.min(w-d(24),d(138)),light?0xffb52d44:0xffffb8c4,targetActive);
         }
-        float ax=Math.max(d(120),Math.min(w-d(120),bubbleX+d(30)));
-        float ay=bubbleY<d(104)?bubbleY+d(105):bubbleY-d(60);
-        float boxWidth=Math.min(w-d(20),d(238)),boxHeight=d(60);
-        ay=Math.max(d(38),Math.min(h-d(38),ay));
-        p.setStyle(Paint.Style.FILL);p.setShader(null);p.setColor(light?0xff121a16:0xffc9f36b);
-        c.drawRoundRect(ax-boxWidth/2,ay-boxHeight/2,ax+boxWidth/2,ay+boxHeight/2,d(22),d(22),p);
-        p.setTypeface(Typeface.create("sans-serif",Typeface.BOLD));p.setTextSize(d(26));
-        String shown=TextUtils.ellipsize(amount,new android.text.TextPaint(p),boxWidth-d(22),TextUtils.TruncateAt.END).toString();
-        p.setColor(light?Color.WHITE:0xff101714);
-        c.drawText(shown,ax-p.measureText(shown)/2,ay-(p.ascent()+p.descent())/2,p);
-
     }
 }
-

@@ -690,5 +690,6 @@
   "Bank for SMS matching": "SMS मिलान के लिए बैंक",
   "Last digits": "आखिरी अंक",
   "Choose a bank and enter the last 3 or 4 digits.": "बैंक चुनें और आखिरी 3 या 4 अंक दर्ज करें।",
-  "This SMS account is already linked.": "यह SMS खाता पहले से जुड़ा है।"
+  "This SMS account is already linked.": "यह SMS खाता पहले से जुड़ा है।",
+  "No tags for this letter": "इस अक्षर से कोई टैग नहीं है"
 }
