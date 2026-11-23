@@ -12,17 +12,20 @@ const photo='data:image/jpeg;base64,SU1H',voice='data:audio/webm;base64,Vk9JQ0U=
  assert.match(a.c.reviewPage(),/Quick payment[\s\S]*transaction-attachments/);
  a.c.openSavedReview(captured.id);
  assert.match(a.nodes.get('#sheet').innerHTML,/Enlarge attached picture/);
- const image={removeAttribute(name){delete this[name]}},closeButton={setAttribute(){}};
- const dialog={open:false,setAttribute(){},addEventListener(){},
-  querySelector(selector){return selector==='button'?closeButton:image},
-  showModal(){this.open=true},close(){this.open=false}};
- a.c.document.createElement=tag=>{assert.equal(tag,'dialog');return dialog};
- a.c.document.getElementById=id=>a.nodes.get('#'+id)?.showModal?dialog:null;
+ const image={removeAttribute(name){delete this[name]}},closeButton={setAttribute(){},focus(){},closest(){return this}};
+ const viewer={attributes:new Set(),handlers:{},setAttribute(key){this.attributes.add(key)},hasAttribute(key){return this.attributes.has(key)},removeAttribute(key){this.attributes.delete(key)},addEventListener(event,action){this.handlers[event]=action},
+  querySelector(selector){return selector==='button'?closeButton:image}};
+ a.c.document.createElement=tag=>{assert.equal(tag,'div');return viewer};
+ a.c.document.getElementById=id=>a.nodes.get('#'+id)?.attributes?viewer:null;
  a.c.document.body={appendChild(node){a.nodes.set('#'+node.id,node)}};
  a.c.viewEntryPicture();
- assert.equal(dialog.open,true);assert.equal(image.src,photo);
+ assert.equal(viewer.hasAttribute('open'),true);assert.equal(image.src,photo);
+ viewer.handlers.click({target:closeButton,stopPropagation(){}});
+ assert.equal(viewer.hasAttribute('open'),false);assert.equal(image.src,undefined);
+ assert.ok(a.nodes.get('#sheet').classList.contains('on'));
+ a.c.viewEntryPicture();
  assert.equal(a.c.window.quickSpendSystemBack(),true);
- assert.equal(dialog.open,false);assert.equal(image.src,undefined);
+ assert.equal(viewer.hasAttribute('open'),false);
  assert.ok(a.nodes.get('#sheet').classList.contains('on'));
  // Enter keeps the draft and calls the native keyboard dismissal. IME composition may still commit text.
  const mainBridge=a.c.window.Capacitor.nativePromise;

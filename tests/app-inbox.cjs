@@ -29,7 +29,8 @@ if(require.main===module)(async()=>{
  const now=Date.now(),phonepe={sourceKey:'phonepe:fixture',from:'PhonePe',amount:1,kind:'Income',merchant:'Example Sender',account:'Central Bank Of India 1234',ts:now};
  a.inbox.items.push(phonepe);await a.c.pull(true);await a.c.pull(true);
  assert.equal(a.eval("pending.filter(p=>isUpiPayment(p)).length"),1,'Repeated PhonePe inbox reads import once');
- assert.equal(a.eval("pending.find(p=>isUpiPayment(p)).acc"),'Central Bank Of India 1234');
+ assert.equal(a.eval("pending.find(p=>isUpiPayment(p)).acc"),'Main account');
+ assert.equal(a.eval('accts.length'),2,'UPI cannot create an account');
  assert.equal(a.eval("pending.find(p=>isUpiPayment(p)).kind"),'Income');
  assert.equal(a.eval("pending.find(p=>isUpiPayment(p)).m"),'Example Sender');
  assert.equal(a.eval('tx.length'),0,'PhonePe stays pending until the user saves');
@@ -39,7 +40,7 @@ if(require.main===module)(async()=>{
  a.eval("openSheet(pending.find(p=>isUpiPayment(p)))");assert.equal(a.eval('hasPossiblePaymentDuplicate(cur)'),true);
  a.c.confirm=()=>false;a.c.save();assert.equal(a.eval('tx.length'),0,'Declining duplicate confirmation keeps both alerts in Review');
  a.c.confirm=()=>true;a.c.save();await settle();assert.equal(a.eval('tx.length'),1);
- assert.equal(a.eval('tx[0].acc'),'Central Bank Of India 1234');assert.ok(a.completed.includes(phonepe.sourceKey));
+ assert.equal(a.eval('tx[0].acc'),'Main account');assert.ok(a.completed.includes(phonepe.sourceKey));
  a.eval("openSheet(pending.find(p=>p.sourceKey==='sms-fixture'))");assert.equal(a.eval('hasPossiblePaymentDuplicate(cur)'),true,'SMS also warns after saving PhonePe');
  const gpay={sourceKey:'upi:gpay',from:'Google Pay',amount:50,kind:'Expense',merchant:'Market',ts:now+3000};
  a.inbox.items.push(gpay);await a.c.pull(true);
