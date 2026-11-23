@@ -290,6 +290,7 @@ const {chromium}=require(process.env.PLAYWRIGHT_MODULE||'playwright'),assert=req
  await tagsPage.reload();
  await tagsPage.evaluate(()=>openSheet({manual:true,m:'New expense',a:20}));
  const grid=tagsPage.locator('.tag-letters');
+ await grid.getByRole('button',{name:'A',exact:true}).click({trial:true});
  const letters=await grid.locator('button').evaluateAll(nodes=>nodes.map(node=>{const box=node.getBoundingClientRect();return [box.x,box.y,box.right]}));
  assert.equal(new Set(letters.map(letter=>letter[1])).size,2,'The full alphabet fits in two lines');
  assert.ok(await grid.evaluate(node=>node.scrollWidth<=node.clientWidth),'The alphabet does not scroll horizontally');
@@ -326,6 +327,7 @@ const {chromium}=require(process.env.PLAYWRIGHT_MODULE||'playwright'),assert=req
  }));
  await overlay.getByRole('button',{name:'Change category',exact:true}).click();
  assert.deepEqual(await overlay.locator('.tag-index button').allTextContents(),['All tags',...'ABCDEFGHIJKLMNOPQRSTUVWXYZ']);
+ await overlay.locator('.tag-letters').getByRole('button',{name:'A',exact:true}).click({trial:true});
  const touch=await overlay.context().newCDPSession(overlay);
  const center=async letter=>{
   const box=await overlay.locator('.tag-letters').getByRole('button',{name:letter,exact:true}).boundingBox();

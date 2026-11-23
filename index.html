@@ -519,12 +519,14 @@ function slideTagLetter(event){
  const grid=event.currentTarget;
  const starting=event.type==='pointerdown';
  if(starting){
-  if(event.button!==0||!event.isPrimary||!event.target.closest('[data-letter]'))return;
+  const button=event.target.closest('[data-letter]');
+  if(event.button!==0||!event.isPrimary||!button)return;
   const results=grid.closest('#entry-tag-results').querySelector('.entry-tag-items');
   // Prevent the anchored entry sheet from moving under the finger as tag counts change.
   results.style.minHeight=results.style.maxHeight=results.getBoundingClientRect().height+'px';
   results.style.overflowY='auto';
   grid.setPointerCapture(event.pointerId);
+  setEntryTagLetter(button.dataset.letter);return;
  }else if(!grid.hasPointerCapture(event.pointerId))return;
  const button=document.elementFromPoint(event.clientX,event.clientY)?.closest('[data-letter]');
  if(button&&grid.contains(button))setEntryTagLetter(button.dataset.letter)
