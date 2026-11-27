@@ -1,7 +1,7 @@
 name: QuickSpend Photo Viewer and Frog Polish
 on:
   push:
-    branches: [codex/sms-status-version-code-fix]
+    branches: [codex/transaction-history-time]
   workflow_dispatch:
     inputs:
       version_code:
