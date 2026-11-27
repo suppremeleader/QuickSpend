@@ -1,4 +1,5 @@
 const assert=require('node:assert/strict');
+const fs=require('node:fs');
 const {app,settle}=require('./app-inbox.cjs');
 
 (async()=>{
@@ -53,6 +54,30 @@ const {app,settle}=require('./app-inbox.cjs');
  assert.equal(routing.eval("bankAccounts['icici:2323']"),undefined,'An unrecognized fallback does not create a remembered bank link');
  const afterRename=app({savedLanguage:'en',savedState:routing.eval("localStorage.getItem('qs1')")});await settle();
  assert.equal(afterRename.c.bankAccountFor('sbi:7890','SBI 7890'),'Adi account');
+
+ // The receiver must queue completed NEFT deposits before either alert path can run.
+ const workflow=fs.readFileSync(require('node:path').join(__dirname,'../.github/workflows/build.yml'),'utf8');
+ const receiver=workflow.split('public class SmsReceiver extends BroadcastReceiver {')[1].split('static void push')[0];
+ const receiverPattern=name=>new RegExp(JSON.parse(receiver.match(new RegExp('Pattern '+name+' = Pattern.compile\\(("(?:[^"\\\\]|\\\\.)*")\\)'))[1]).replace(/^\(\?i\)/,''),'i');
+ const keyword=receiverPattern('KW'),blocked=receiverPattern('BAD'),amount=receiverPattern('AMT');
+ const accepts=body=>keyword.test(body)&&!blocked.test(body)&&amount.test(body);
+ const deposit='Update! INR 12,345.67 deposited in HDFC Bank A/c XX0173 on 27-NOV-26 for NEFT Cr-TEST0000001-EXAMPLE COMPANY-EXAMPLE CUSTOMER-TESTREF.Avl bal INR 98,765.43. Cheque deposits in A/C are subject to clearing';
+ assert.equal(accepts(deposit),true);
+ assert.equal(accepts('INR 500.00 debited from HDFC Bank A/c XX0173'),true);
+ for(const rejected of ['INR 500.00 will be deposited in HDFC Bank A/c XX0173','INR 500.00 was not deposited in HDFC Bank A/c XX0173','Avl bal INR 98,765.43. Cheque deposits in A/C are subject to clearing']){
+  assert.equal(accepts(rejected),false);
+  assert.equal(routing.c.parseSms('VK-HDFCBK-S',rejected),null)
+ }
+ const parsed=JSON.parse(JSON.stringify(routing.c.parseSms('VK-HDFCBK-S',deposit)));
+ assert.equal(parsed.kind,'Income');
+ assert.equal(parsed.a,12345.67);
+ assert.equal(parsed.bankKey,'hdfc:0173');
+ assert.equal(routing.c.parseSms('',deposit).bankKey,'hdfc:0173','Copy and paste works without a sender header');
+ routing.eval("accts.push({n:'Salary bank',smsBank:'hdfc:0173'})");
+ routing.inbox.items=[incoming('neft-salary','VK-HDFCBK-S',deposit)];
+ await routing.c.pull(true);
+ assert.equal(routing.eval("pending.find(p=>p.sourceKey==='neft-salary').acc"),'Salary bank');
+ assert.equal(routing.eval("pending.find(p=>p.sourceKey==='neft-salary').kind"),'Income');
 
  const b=app({savedLanguage:'en'});await settle();b.eval('tx=[];pending=[];recur=[]');
  const records=[{id:80,sourceKey:'sms-a',ts:1763000000000,a:100,m:'Cafe',t:'Expense',acc:'Cash'},
