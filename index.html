@@ -1500,8 +1500,8 @@ function bankAccountFor(key,fallback){return matchedBankAccount(key)||existingAc
 function chooseEntryAccount(index){cur.acc=accts[index].n;cur.accountSelected=true;paint()}
 function shouldLearnBankAccount(){return cur.accountSelected||matchedBankAccount(cur.bankKey)===cur.acc}
 function parseSms(from,body){const t=(body||'').replace(/\s+/g,' ').trim();
- if(!/(debited|credited|spent|paid|received|withdrawn|sent rs|sent inr|purchase|txn|transaction|transferred|refund)/i.test(t))return null;
- if(/(otp|one.?time|verification code|below minimum|min(imum)? (bal|limit)|payment due|amount due|due on|will be debited|request(ed)? (money|from)|collect request|fail|declin|unsuccess|not processed|offer|apply now|congratulations|pre-?approved)/i.test(t))return null;
+ if(!/(debited|credited|spent|paid|received|withdrawn|sent rs|sent inr|purchase|txn|transaction|transferred|refund|\bdeposited\s+(?:in(?:to)?|to)\b)/i.test(t))return null;
+ if(/(otp|one.?time|verification code|below minimum|min(imum)? (bal|limit)|payment due|amount due|due on|will be debited|\b(?:will be|to be|not)\s+deposited\b|request(ed)? (money|from)|collect request|fail|declin|unsuccess|not processed|offer|apply now|congratulations|pre-?approved)/i.test(t))return null;
  const re=/(?:rs\.?|inr|₹)\s*([0-9][0-9,]*(?:\.[0-9]{1,2})?)/gi;let m,a=null,x;
  while((m=re.exec(t))){if(!/(bal|limit|lmt|avl|available|outstanding|due)[^0-9]{0,12}$/i.test(t.slice(Math.max(0,m.index-18),m.index))){a=parseFloat(m[1].replace(/,/g,''));break}}
  if(!a&&(x=t.match(/(?:debited|credited)\s+(?:by|for|with)?\s*(?:rs\.?|inr)?\s*([0-9][0-9,]*(?:\.[0-9]+)?)/i)))a=parseFloat(x[1].replace(/,/g,''));
