@@ -691,5 +691,12 @@
   "Last digits": "आखिरी अंक",
   "Choose a bank and enter the last 3 or 4 digits.": "बैंक चुनें और आखिरी 3 या 4 अंक दर्ज करें।",
   "This SMS account is already linked.": "यह SMS खाता पहले से जुड़ा है।",
-  "No tags for this letter": "इस अक्षर से कोई टैग नहीं है"
+  "No tags for this letter": "इस अक्षर से कोई टैग नहीं है",
+  "Balance adjustment": "बैलेंस समायोजन",
+  "All clear": "बैलेंस शून्य करें",
+  "Are you sure?": "क्या आप निश्चित हैं?",
+  "All clear will set this account balance to zero. Delete the All clear entry in history to undo it.": "इस खाते का बैलेंस शून्य हो जाएगा। इसे वापस करने के लिए इतिहास से बैलेंस शून्य करने वाली एंट्री हटाएँ।",
+  "Delete this entry to undo the balance adjustment.": "बैलेंस समायोजन वापस करने के लिए यह एंट्री हटाएँ।",
+  "No": "नहीं",
+  "Yes": "हाँ"
 }
