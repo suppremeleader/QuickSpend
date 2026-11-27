@@ -59,8 +59,8 @@ const {app,settle}=require('./app-inbox.cjs');
  const workflow=fs.readFileSync(require('node:path').join(__dirname,'../.github/workflows/build.yml'),'utf8');
  const receiver=workflow.split('public class SmsReceiver extends BroadcastReceiver {')[1].split('static void push')[0];
  const receiverPattern=name=>new RegExp(JSON.parse(receiver.match(new RegExp('Pattern '+name+' = Pattern.compile\\(("(?:[^"\\\\]|\\\\.)*")\\)'))[1]).replace(/^\(\?i\)/,''),'i');
- const keyword=receiverPattern('KW'),blocked=receiverPattern('BAD'),amount=receiverPattern('AMT');
- const accepts=body=>keyword.test(body)&&!blocked.test(body)&&amount.test(body);
+ const keyword=receiverPattern('KW'),blocked=receiverPattern('BAD'),nonPosted=receiverPattern('NON_POSTED'),amount=receiverPattern('AMT');
+ const accepts=body=>keyword.test(body)&&!blocked.test(body)&&!nonPosted.test(body.replace(/\s+/g,' '))&&amount.test(body);
  const deposit='Update! INR 12,345.67 deposited in HDFC Bank A/c XX0173 on 27-NOV-26 for NEFT Cr-TEST0000001-EXAMPLE COMPANY-EXAMPLE CUSTOMER-TESTREF.Avl bal INR 98,765.43. Cheque deposits in A/C are subject to clearing';
  assert.equal(accepts(deposit),true);
  assert.equal(accepts('INR 500.00 debited from HDFC Bank A/c XX0173'),true);
@@ -68,6 +68,39 @@ const {app,settle}=require('./app-inbox.cjs');
   assert.equal(accepts(rejected),false);
   assert.equal(routing.c.parseSms('VK-HDFCBK-S',rejected),null)
  }
+ const emiDebit='INR 3,200 was deducted from HDFC Bank A/c XX0173 for your EMI on 02-DEC-26';
+ const nonPayments=[
+  'Your INR 1,500 transaction status is pending',
+  'INR 1,500 credited to A/c XX0173. Transaction status: pending',
+  'Reminder: Your loan EMI of INR 3,200 is payable on 02-DEC-26. Please maintain sufficient balance.',
+  'Your EMI of INR 1,500 is scheduled for auto-debit on 02-DEC-26',
+  'Your NACH transaction for INR 1,500 shall be\ndeducted on 02-DEC-26',
+  'Your eligible refund of INR 1,500 will be credited within 5 days'
+ ];
+ for(const body of nonPayments){
+  assert.equal(accepts(body),false,body);
+  assert.equal(routing.c.parseSms('VK-HDFCBK-S',body),null,body)
+ }
+ assert.equal(accepts(emiDebit),true);
+ assert.equal(routing.c.parseSms('VK-HDFCBK-S',emiDebit).kind,'Expense');
+ assert.equal(routing.c.parseSms('VK-HDFCBK-S',emiDebit).a,3200);
+ routing.eval("pending.push({sourceKey:'old-reminder',a:1500,kind:'Income'})");
+ routing.inbox.items=[
+  {...incoming('old-reminder','VK-HDFCBK-S',nonPayments[2]),amount:1500,kind:'Income'},
+  incoming('old-pending','VK-HDFCBK-S',nonPayments[1]),
+  incoming('emi-debit','VK-HDFCBK-S',emiDebit)
+ ];
+ const transactionCount=routing.eval('tx.length');
+ await routing.c.pull(true);
+ await routing.c.pull(true);
+ assert.equal(routing.eval('tx.length'),transactionCount,'Review sync cannot post ignored alerts');
+ assert.equal(routing.eval("pending.filter(p=>p.sourceKey.startsWith('old-')).length"),0);
+ assert.equal(routing.inbox.items.some(p=>p.sourceKey.startsWith('old-')),false);
+ assert.equal(routing.eval("pending.filter(p=>p.sourceKey==='emi-debit'&&p.kind==='Expense').length"),1);
+ routing.eval("openSheet(pending.find(p=>p.sourceKey==='emi-debit'));save()");
+ await settle();
+ await routing.c.pull(true);
+ assert.equal(routing.eval("tx.filter(t=>t.sourceKey==='emi-debit'&&t.t==='Expense'&&t.a===3200).length"),1);
  const parsed=JSON.parse(JSON.stringify(routing.c.parseSms('VK-HDFCBK-S',deposit)));
  assert.equal(parsed.kind,'Income');
  assert.equal(parsed.a,12345.67);

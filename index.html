@@ -1542,14 +1542,16 @@ function matchedBankAccount(key){
 function bankAccountFor(key,fallback){return matchedBankAccount(key)||existingAccount(fallback)||mainAccount()}
 function chooseEntryAccount(index){cur.acc=accts[index].n;cur.accountSelected=true;paint()}
 function shouldLearnBankAccount(){return cur.accountSelected||matchedBankAccount(cur.bankKey)===cur.acc}
+function ignoreSmsPaymentStatus(body){return /\b(?:pending|in progress|under process|awaiting (?:confirmation|completion|processing|settlement))\b|\b(?:will|shall|would|to)\s+be\s+(?:debited|deducted|charged|presented|collected|credited|refunded|reversed)\b|\b(?:emi|instal{1,2}ment|loan repayment|nach|e[- ]?mandate|auto[- ]?debit)\b(?=.*\b(?:due|reminder|upcoming|scheduled|please (?:pay|maintain|ensure)|keep sufficient balance)\b)|\b(?:reminder|upcoming|scheduled)\b(?=.*\b(?:emi|instal{1,2}ment|loan repayment|nach|e[- ]?mandate|auto[- ]?debit)\b)/i.test((body||'').replace(/\s+/g,' '))}
 function parseSms(from,body){const t=(body||'').replace(/\s+/g,' ').trim();
- if(!/(debited|credited|spent|paid|received|withdrawn|sent rs|sent inr|purchase|txn|transaction|transferred|refund|\bdeposited\s+(?:in(?:to)?|to)\b)/i.test(t))return null;
+ if(ignoreSmsPaymentStatus(t))return null;
+ if(!/(debited|deducted|credited|spent|paid|received|withdrawn|sent rs|sent inr|purchase|txn|transaction|transferred|refund|\bdeposited\s+(?:in(?:to)?|to)\b)/i.test(t))return null;
  if(/(otp|one.?time|verification code|below minimum|min(imum)? (bal|limit)|payment due|amount due|due on|will be debited|\b(?:will be|to be|not)\s+deposited\b|request(ed)? (money|from)|collect request|fail|declin|unsuccess|not processed|offer|apply now|congratulations|pre-?approved)/i.test(t))return null;
  const re=/(?:rs\.?|inr|₹)\s*([0-9][0-9,]*(?:\.[0-9]{1,2})?)/gi;let m,a=null,x;
  while((m=re.exec(t))){if(!/(bal|limit|lmt|avl|available|outstanding|due)[^0-9]{0,12}$/i.test(t.slice(Math.max(0,m.index-18),m.index))){a=parseFloat(m[1].replace(/,/g,''));break}}
- if(!a&&(x=t.match(/(?:debited|credited)\s+(?:by|for|with)?\s*(?:rs\.?|inr)?\s*([0-9][0-9,]*(?:\.[0-9]+)?)/i)))a=parseFloat(x[1].replace(/,/g,''));
+ if(!a&&(x=t.match(/(?:debited|deducted|credited)\s+(?:by|for|with)?\s*(?:rs\.?|inr)?\s*([0-9][0-9,]*(?:\.[0-9]+)?)/i)))a=parseFloat(x[1].replace(/,/g,''));
  if(!a)return null;
- const d=t.search(/debited|spent|paid|withdrawn|sent|purchase|transferred|payment of|txn of/i),c=t.search(/credited|received|deposited|refund/i),kind=d<0?'Income':c<0?'Expense':(d<c?'Expense':'Income');
+ const d=t.search(/debited|deducted|spent|paid|withdrawn|sent|purchase|transferred|payment of|txn of/i),c=t.search(/credited|received|deposited|refund/i),kind=d<0?'Income':c<0?'Expense':(d<c?'Expense':'Income');
  const bk=BANKS.find(b=>b[0].test(from||''))||BANKS.find(b=>b[0].test(t)),bank=bk?bk[1]:'',l4=t.match(/\b(?:a\s*\/\s*c|acct?|account|card)\b(?:\s*(?:no\.?|number))?(?:\s+ending(?:\s+(?:in|with))?)?[\s:.-]*[x*•\s-]*([0-9]{3,4})\b/i)?.[1]||'';
  const stop='(?=\\s+(?:on|ref|via|upi|using|from|to|dt|date|avl|bal|not|if|call|\\d{2}[-/])|[.,;(]|$)';
  let mer=null;
@@ -1605,8 +1607,17 @@ async function pull(fg){const P=SB();if(!P||pullingNative)return;pullingNative=t
   if(o.demo)continue;
   const key=o.sourceKey||o.ts+'|'+(o.body||'').slice(0,50);
   if(deletedSource(key)||tx.some(x=>x.sourceKey===key)){completed.push(key);continue;}
-  if(pending.some(x=>x.sourceKey===key))continue;
   const appAlert=isUpiPayment({sourceKey:key});
+  if(!appAlert&&ignoreSmsPaymentStatus(o.body)){
+   const before=pending.length;
+   pending=pending.filter(payment=>payment.sourceKey!==key);
+   if(before!==pending.length)changed=true;
+   if(inc?.sourceKey===key){inc=null;$('#bub').classList.remove('show')}
+   if(cur.sourceKey===key&&$('#sheet').classList.contains('on'))closeSheet();
+   completed.push(key);
+   continue;
+  }
+  if(pending.some(x=>x.sourceKey===key))continue;
   const amount=Number(o.amount);
   if(appAlert&&(!Number.isFinite(amount)||amount<=0||!['Income','Expense'].includes(o.kind)))continue;
   const p=appAlert?{m:cleanNativeText(o.merchant)||'UPI payment',a:amount,kind:o.kind,acc:cleanNativeText(o.account)||null}:

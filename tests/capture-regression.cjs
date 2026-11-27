@@ -1,7 +1,7 @@
 const fs=require('fs'),vm=require('vm'),assert=require('assert');
 const html=fs.readFileSync(require('path').join(__dirname,'../index.html'),'utf8');
 const paymentHelpers=html.slice(html.indexOf('function isUpiPayment('),html.indexOf('function save(){'));
-const importer=paymentHelpers+html.slice(html.indexOf('function deletedSource('),html.indexOf('function deletionKeys('))+html.slice(html.indexOf('let pullingNative=false;'),html.indexOf('function openFloatingSettings()'));
+const importer=paymentHelpers+html.slice(html.indexOf('function ignoreSmsPaymentStatus('),html.indexOf('function parseSms('))+html.slice(html.indexOf('function deletedSource('),html.indexOf('function deletionKeys('))+html.slice(html.indexOf('let pullingNative=false;'),html.indexOf('function openFloatingSettings()'));
 function setup(snapshot,{storageWorks=true}={}){
  const seen=new Set(),nativePending=JSON.parse(JSON.stringify(snapshot.items||[])),nativeSaved=JSON.parse(JSON.stringify(snapshot.entries||[]));let acknowledged=[],completed=[],writes=0;
  const nodes={};const node=()=>({classList:{add(){},contains:()=>false}});

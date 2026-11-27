@@ -1,7 +1,7 @@
 name: QuickSpend Photo Viewer and Frog Polish
 on:
   push:
-    branches: [codex/account-all-clear]
+    branches: [codex/account-all-clear, codex/sms-transaction-status]
   workflow_dispatch:
     inputs:
       version_code:
@@ -156,9 +156,14 @@ jobs:
             static final String PREFS = "qs_sms";
             static final String KEY = "queue";
             static final String CH = "qs_pay";
-            static final Pattern KW = Pattern.compile("(?i)(debited|credited|spent|paid|received|withdrawn|sent rs|sent inr|purchase|txn|transaction|transferred|refund|\\bdeposited\\s+(?:in(?:to)?|to)\\b)");
+            static final Pattern KW = Pattern.compile("(?i)(debited|deducted|credited|spent|paid|received|withdrawn|sent rs|sent inr|purchase|txn|transaction|transferred|refund|\\bdeposited\\s+(?:in(?:to)?|to)\\b)");
             static final Pattern BAD = Pattern.compile("(?i)(otp|one.?time|verification code|below minimum|min(imum)? (bal|limit)|payment due|amount due|due on|will be debited|\\b(?:will be|to be|not)\\s+deposited\\b|request(ed)? (money|from)|collect request|fail|declin|unsuccess|not processed|offer|apply now|congratulations|pre-?approved)");
+            static final Pattern NON_POSTED = Pattern.compile("(?i)\\b(?:pending|in progress|under process|awaiting (?:confirmation|completion|processing|settlement))\\b|\\b(?:will|shall|would|to)\\s+be\\s+(?:debited|deducted|charged|presented|collected|credited|refunded|reversed)\\b|\\b(?:emi|instal{1,2}ment|loan repayment|nach|e[- ]?mandate|auto[- ]?debit)\\b(?=.*\\b(?:due|reminder|upcoming|scheduled|please (?:pay|maintain|ensure)|keep sufficient balance)\\b)|\\b(?:reminder|upcoming|scheduled)\\b(?=.*\\b(?:emi|instal{1,2}ment|loan repayment|nach|e[- ]?mandate|auto[- ]?debit)\\b)");
             static final Pattern AMT = Pattern.compile("(?i)(?:rs\\.?|inr|\\u20b9)\\s*([0-9][0-9,]*(?:\\.[0-9]{1,2})?)");
+
+            static boolean ignorePaymentStatus(String body) {
+              return NON_POSTED.matcher(body.replaceAll("\\s+", " ")).find();
+            }
 
             @Override
             public void onReceive(Context c, Intent i) {
@@ -170,14 +175,14 @@ jobs:
               String body = b.toString();
               String from = ms[0].getOriginatingAddress();
               long ts = ms[0].getTimestampMillis();
-              if (!KW.matcher(body).find() || BAD.matcher(body).find() || !AMT.matcher(body).find()) return;
+              if (!KW.matcher(body).find() || BAD.matcher(body).find() || ignorePaymentStatus(body) || !AMT.matcher(body).find()) return;
               try { SmsStore.enqueue(c, from, body, ts, false); }
               catch (RuntimeException e) { android.util.Log.e("QuickSpend", "Could not store incoming payment", e); }
               try { alert(c, body); } catch (Exception e) { }
             }
 
             static void push(Context c, String from, String body, long ts) {
-              SmsStore.enqueue(c, from, body, ts, false);
+              if (!ignorePaymentStatus(body)) SmsStore.enqueue(c, from, body, ts, false);
             }
 
             static void alert(Context c, String body) {
@@ -618,7 +623,7 @@ jobs:
           public final class PaymentParser {
               private static final Pattern AMOUNT = Pattern.compile("(?i)(?:rs\\.?|inr|\u20b9)\\s*([0-9][0-9,]*(?:\\.[0-9]{1,2})?)");
               private static final Pattern BALANCE = Pattern.compile("(?i)(bal|limit|lmt|avl|available|outstanding|due)[^0-9]{0,12}$");
-              private static final Pattern DEBIT = Pattern.compile("(?i)debited|spent|paid|withdrawn|sent|purchase|transferred|payment of|txn of");
+              private static final Pattern DEBIT = Pattern.compile("(?i)debited|deducted|spent|paid|withdrawn|sent|purchase|transferred|payment of|txn of");
               private static final Pattern CREDIT = Pattern.compile("(?i)credited|received|deposited|refund");
               private static final Pattern MERCHANT = Pattern.compile("(?i)\\b(?:at|to|from)\\s+(?!a/c|ac\\b|acct|your|the\\b|vpa|you\\b|rs\\b|inr\\b)([A-Za-z][A-Za-z0-9@ &._*-]{1,28}?)(?=\\s+(?:on|ref|via|upi|using|from|to|dt|date|avl|bal|not|if|call)\\b|[.,;]|$)");
               public final double amount;
@@ -646,7 +651,7 @@ jobs:
                       if (amount > 0 && !Double.isInfinite(amount)) break;
                   }
                   if (amount <= 0) {
-                      Matcher fallback = Pattern.compile("(?i)(?:debited|credited)\\s+(?:by|for|with)?\\s*(?:rs\\.?|inr)?\\s*([0-9][0-9,]*(?:\\.[0-9]+)?)").matcher(text);
+                      Matcher fallback = Pattern.compile("(?i)(?:debited|deducted|credited)\\s+(?:by|for|with)?\\s*(?:rs\\.?|inr)?\\s*([0-9][0-9,]*(?:\\.[0-9]+)?)").matcher(text);
                       if (fallback.find()) try { amount = Double.parseDouble(fallback.group(1).replace(",", "")); } catch (NumberFormatException ignored) { }
                   }
                   Matcher debit = DEBIT.matcher(text), credit = CREDIT.matcher(text);
@@ -765,7 +770,14 @@ jobs:
                   }
               }
               public static JSONArray pending(Context c) {
-                  synchronized (LOCK) { return inbox(prefs(c)); }
+                  synchronized (LOCK) {
+                      JSONArray queued = inbox(prefs(c)), visible = new JSONArray();
+                      for (int i = 0; i < queued.length(); i++) {
+                          JSONObject item = queued.optJSONObject(i);
+                          if (!SmsReceiver.ignorePaymentStatus(item.optString("body"))) visible.put(item);
+                      }
+                      return visible;
+                  }
               }
               private static final String BANK_ACCOUNTS="bank_accounts";
               static boolean bankKeyValid(String key){return key.matches("[a-z][a-z0-9 -]{0,32}(?::[0-9]{3,4})?");}
