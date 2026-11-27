@@ -1,0 +1,161 @@
+name: QuickSpend budget-device checks
+on:
+  push:
+    branches: [codex/sms-budget-device-qa]
+permissions:
+  contents: read
+  actions: read
+jobs:
+  build-ready:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 16
+    steps:
+      - name: Wait for signed QuickSpend build 129
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: gh run watch 46019348932 --exit-status --interval 15
+  android:
+    needs: build-ready
+    runs-on: ubuntu-24.04
+    timeout-minutes: 22
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - api: 30
+            ram: 1536M
+            cores: 2
+          - api: 34
+            ram: 2048M
+            cores: 2
+    steps:
+      - name: Download the exact signed APK from build 129
+        uses: actions/download-artifact@v4
+        with:
+          name: quickspend-frog-photo-129
+          run-id: 46019348932
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: signed
+      - name: Enable emulator acceleration
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Prepare native SMS checks
+        run: |
+          cat > /tmp/quickspend-device.sh <<'BASH'
+          set -euo pipefail
+          app=com.quickspend.app
+          launch() {
+            adb shell am start -W -n "$app/.MainActivity" | tee launch.txt
+            grep -q 'Status: ok' launch.txt
+            adb shell pidof "$app"
+          }
+          notice() {
+            adb shell dumpsys notification --noredact | grep -F "Quick Spend: ₹$1" >/dev/null
+          }
+          await_notice() {
+            for _ in $(seq 1 20); do
+              if notice "$1"; then return 0; fi
+              sleep 1
+            done
+            printf 'No QuickSpend alert for ₹%s\n' "$1" >&2
+            return 1
+          }
+          adb shell wm size 720x1280
+          adb shell wm density 320
+          adb install signed/quickspend-frog-photo-129.apk
+          adb shell pm grant "$app" android.permission.RECEIVE_SMS
+          if [ "$(adb shell getprop ro.build.version.sdk | tr -d '\r')" -ge 33 ]; then
+            adb shell pm grant "$app" android.permission.POST_NOTIFICATIONS
+          fi
+          launch
+          adb shell input keyevent KEYCODE_HOME
+          adb emu sms send 5550123 'Reminder: Your EMI of INR 3,200 will be deducted from A/c XX0173 on 02-DEC-26.'
+          adb emu sms send 5550123 'INR 1,500 credited to A/c XX0173. Transaction status: pending.'
+          sleep 6
+          if notice 3,200 || notice 1,500; then
+            echo 'Unexpected QuickSpend alert for an unposted payment' >&2
+            exit 1
+          fi
+          adb emu sms send 5550123 'INR 3,200 was deducted from HDFC Bank A/c XX0173 for EMI.'
+          await_notice 3,200
+          adb emu sms send 5550123 'Update! INR 500 deposited in HDFC Bank A/c XX0173 for NEFT Cr-TEST.'
+          await_notice 500
+          adb shell svc wifi disable
+          adb shell svc data disable
+          adb shell am force-stop "$app"
+          launch
+          adb shell dumpsys activity activities | grep -F "$app/.MainActivity" >/dev/null
+          echo 'PASS: installed, launched, skipped pending and reminder SMS, showed confirmed debit and credit alerts, relaunched offline'
+          BASH
+      - name: Run the signed app on Android
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: ${{ matrix.api }}
+          target: google_apis
+          arch: x86_64
+          cores: ${{ matrix.cores }}
+          ram-size: ${{ matrix.ram }}
+          disable-animations: true
+          script: bash /tmp/quickspend-device.sh
+  browser:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Verify small-screen expense and persistence under CPU throttling
+        run: |
+          npm install --prefix /tmp/qs-ui --no-save --ignore-scripts playwright@1.56.1
+          /tmp/qs-ui/node_modules/.bin/playwright install chromium
+          node <<'JS'
+          const assert = require('node:assert/strict');
+          const { pathToFileURL } = require('node:url');
+          const { chromium } = require('/tmp/qs-ui/node_modules/playwright');
+          (async () => {
+            const browser = await chromium.launch();
+            try {
+              for (const [width, height, rate] of [[320, 640, 6], [360, 640, 4]]) {
+                const context = await browser.newContext({viewport:{width,height},isMobile:true,hasTouch:true});
+                await context.setOffline(true);
+                const page = await context.newPage();
+                const cdp = await context.newCDPSession(page);
+                await cdp.send('Emulation.setCPUThrottlingRate',{rate});
+                const errors = [];
+                page.on('pageerror', error => errors.push(error.message));
+                await page.addInitScript(() => {
+                  for (const key of ['qs_ob','qs_p2','qs_account_setup']) localStorage.setItem(key,'1');
+                  localStorage.setItem('qs_language','en');
+                  if (!localStorage.getItem('qs1')) {
+                    const tx = Array.from({length:500}, (_,i) => ({id:i+1,t:'Expense',a:25,c:'Food',m:'Shop '+i,ts:Date.now()-i*86400000,acc:'Main account',d:'Today',settled:0}));
+                    localStorage.setItem('qs1',JSON.stringify({tx,pending:[],memory:{},speed:[],accts:[{n:'Main account',i:'🏦'}],recur:[],sid:501,budgets:{}}));
+                  }
+                });
+                const url = pathToFileURL(process.cwd()+'/index.html').href;
+                await page.goto(url);
+                await page.locator('#s-home .history-row').first().waitFor();
+                const before = await page.locator('#s-home .balance-hero .big').first().innerText();
+                await page.evaluate(() => openSheet({manual:true,m:'Offline budget-device QA',a:125}));
+                await page.locator('#sheet .save').evaluate(el => el.click());
+                await page.locator('#sheet.on').waitFor({state:'hidden'});
+                const after = await page.locator('#s-home .balance-hero .big').first().innerText();
+                const numeric = text => Number(text.replace(/[^0-9.-]/g,''));
+                assert.equal(numeric(before) - numeric(after),125);
+                await page.reload();
+                await page.locator('#s-home .history-row').filter({hasText:'Offline budget-device QA'}).waitFor();
+                assert.equal(await page.locator('#s-home .balance-hero .big').first().innerText(),after);
+                await page.locator('#s-home button').filter({hasText:'See all'}).click();
+                await page.locator('#history-search').fill('Offline budget-device QA');
+                assert.equal(await page.locator('#history-results .history-row').count(),1);
+                assert.equal(await page.locator('.history-filters').evaluate(el=>el.scrollWidth>el.clientWidth+1),false);
+                assert.deepEqual(errors,[]);
+                console.log('PASS: '+width+'x'+height+', '+rate+'x CPU slowdown, 500 records, offline save/reload, balance and searchable history');
+                await context.close();
+              }
+            } finally { await browser.close(); }
+          })().catch(error => { console.error(error);process.exitCode=1; });
+          JS
