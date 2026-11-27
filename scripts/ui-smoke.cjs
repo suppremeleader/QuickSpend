@@ -288,7 +288,7 @@ const {chromium}=require(process.env.PLAYWRIGHT_MODULE||'playwright'),assert=req
  await clearPage.getByRole('button',{name:'All clear',exact:true}).click();
  await clearPage.getByRole('button',{name:'Yes',exact:true}).click();
  assert.equal(await clearPage.evaluate(()=>accountTotals('HDFC').bal),0);
- await clearPage.getByRole('button',{name:/All clear/}).click();
+ await clearPage.locator('#s-home .history-row').filter({hasText:'All clear'}).click();
  await clearPage.getByRole('heading',{name:'All clear',exact:true}).waitFor();
  clearPage.once('dialog',dialog=>dialog.accept());
  await clearPage.getByRole('button',{name:'Delete',exact:true}).click();
