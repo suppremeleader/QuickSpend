@@ -1,7 +1,7 @@
 name: QuickSpend Photo Viewer and Frog Polish
 on:
   push:
-    branches: [codex/transaction-history-time]
+    branches: [codex/upi-alerts-required-setup]
   workflow_dispatch:
     inputs:
       version_code:
@@ -147,6 +147,7 @@ jobs:
           import android.provider.Telephony;
           import android.telephony.SmsMessage;
           import androidx.core.app.NotificationCompat;
+          import androidx.core.app.NotificationManagerCompat;
           import org.json.JSONArray;
           import org.json.JSONObject;
           import java.util.regex.Matcher;
@@ -176,9 +177,9 @@ jobs:
               String from = ms[0].getOriginatingAddress();
               long ts = ms[0].getTimestampMillis();
               if (!KW.matcher(body).find() || BAD.matcher(body).find() || ignorePaymentStatus(body) || !AMT.matcher(body).find()) return;
-              try { SmsStore.enqueue(c, from, body, ts, false); }
-              catch (RuntimeException e) { android.util.Log.e("QuickSpend", "Could not store incoming payment", e); }
-              try { alert(c, body); } catch (Exception e) { }
+              try {
+                if (SmsStore.enqueue(c, from, body, ts, false)) alert(c, body);
+              } catch (RuntimeException e) { android.util.Log.e("QuickSpend", "Could not process incoming payment", e); }
             }
 
             static void push(Context c, String from, String body, long ts) {
@@ -186,6 +187,12 @@ jobs:
             }
 
             static void alert(Context c, String body) {
+              Matcher m = AMT.matcher(body);
+              alertAmount(c, m.find() ? "\u20b9" + m.group(1) : QsLanguage.tr(c,"Payment"));
+            }
+
+            static void alertAmount(Context c, String amt) {
+              if (!NotificationManagerCompat.from(c).areNotificationsEnabled()) return;
               NotificationManager nm = (NotificationManager) c.getSystemService(Context.NOTIFICATION_SERVICE);
               if (Build.VERSION.SDK_INT >= 26) {
                 nm.createNotificationChannel(new NotificationChannel(CH, QsLanguage.tr(c,"Payments"), NotificationManager.IMPORTANCE_HIGH));
@@ -193,8 +200,6 @@ jobs:
               Intent li = c.getPackageManager().getLaunchIntentForPackage(c.getPackageName());
               if (li == null) return;
               PendingIntent pi = PendingIntent.getActivity(c, 0, li, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
-              Matcher m = AMT.matcher(body);
-              String amt = m.find() ? "\u20b9" + m.group(1) : QsLanguage.tr(c,"Payment");
               Notification n = new NotificationCompat.Builder(c, CH)
                 .setSmallIcon(R.drawable.ic_qs_notification)
                 .setContentTitle("Quick Spend: " + amt)
@@ -301,6 +306,15 @@ jobs:
                   call.resolve();
                 } catch (Exception e) { call.reject("Could not open notification access.", e); }
               });
+            }
+
+            @PluginMethod
+            public void openAppPermissionSettings(PluginCall call) {
+              try {
+                getActivity().startActivity(new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                    Uri.parse("package:" + getContext().getPackageName())));
+                call.resolve();
+              } catch (Exception e) { call.reject("Could not open app settings", e); }
             }
 
             @PluginMethod
@@ -707,25 +721,39 @@ jobs:
               private static void persist(SharedPreferences.Editor editor) {
                   if (!editor.commit()) throw new IllegalStateException("QuickSpend could not save to this phone. Check free storage.");
               }
-              public static void enqueue(Context c, String from, String body, long ts, boolean demo) {
+              public static boolean enqueue(Context c, String from, String body, long ts, boolean demo) {
                   try {
-                      enqueue(c, new JSONObject().put("from", from).put("body", body).put("ts", ts).put("demo", demo));
+                      return enqueue(c, new JSONObject().put("from", from).put("body", body).put("ts", ts).put("demo", demo));
                   } catch (JSONException e) { throw new IllegalStateException("Could not queue payment", e); }
               }
               static void enqueueUpi(Context c, UpiPayment payment, String sourceKey, long ts) throws JSONException {
-                  enqueue(c, new JSONObject().put("from", payment.app).put("ts", ts).put("sourceKey", sourceKey)
+                  JSONObject item = new JSONObject().put("from", payment.app).put("ts", ts).put("sourceKey", sourceKey)
                           .put("amount", payment.amount).put("kind", payment.kind).put("merchant", payment.counterparty)
-                          .put("account", payment.account));
+                          .put("account", payment.account);
+                  if (enqueue(c, item)) SmsReceiver.alertAmount(c,
+                          String.format(java.util.Locale.US, "\u20b9%,.2f", payment.amount));
               }
-              private static void enqueue(Context c, JSONObject item) {
+              private static boolean enqueue(Context c, JSONObject item) {
+                  boolean shouldAlert = true;
                   synchronized (LOCK) {
                       SharedPreferences p = prefs(c);
                       try {
                           String key = key(item);
                           item.put("sourceKey", key);
                           JSONArray q = inbox(p), handled = array(p, HANDLED);
-                          for (int i = 0; i < q.length(); i++) if (key.equals(key(q.getJSONObject(i)))) return;
-                          for (int i = 0; i < handled.length(); i++) if (key.equals(handled.optString(i))) return;
+                          for (int i = 0; i < handled.length(); i++) if (key.equals(handled.optString(i))) return false;
+                          boolean upi = UpiPayment.isAppAlert(key);
+                          PaymentParser incoming = PaymentParser.parse(item);
+                          for (int i = 0; i < q.length(); i++) {
+                              JSONObject prior = q.getJSONObject(i);
+                              if (key.equals(key(prior))) return false;
+                              if (upi == UpiPayment.isAppAlert(key(prior)) || prior.optBoolean("demo") || item.optBoolean("demo")) continue;
+                              PaymentParser existing = PaymentParser.parse(prior);
+                              if (incoming.type.equals(existing.type) && UpiPayment.nearby(
+                                      incoming.amount, item.optLong("ts"), existing.amount, prior.optLong("ts"))) {
+                                  shouldAlert = false;
+                              }
+                          }
                           JSONArray clean = new JSONArray();
                           for (int i = 0; i < q.length(); i++) if (!item.optBoolean("demo") || !q.getJSONObject(i).optBoolean("demo")) clean.put(q.get(i));
                           clean.put(item);
@@ -747,6 +775,7 @@ jobs:
                   }
                   FloatingCaptureService.refresh(c, true);
                   QsWidgets.updateAll(c);
+                  return shouldAlert;
               }
               static boolean requiresReview(Context c, JSONObject item) {
                   if (UpiPayment.isAppAlert(key(item))) return true;
@@ -1425,7 +1454,7 @@ jobs:
               }
               private void showPanel(JSONObject item) {
                   if(UpdatePush.required(this)>0){showRequiredUpdate(item);return;}
-                  if(SmsStore.requiresReview(this,item)||!CaptureEntryView.supported()){
+                  if(!CaptureEntryView.supported()){
                       try{openCaptureInApp(item,null,"");}
                       catch(RuntimeException e){Toast.makeText(this,tr("Open QuickSpend to review this payment."),Toast.LENGTH_SHORT).show();}
                       return;

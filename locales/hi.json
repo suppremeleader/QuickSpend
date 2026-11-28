@@ -698,5 +698,16 @@
   "All clear will set this account balance to zero. Delete the All clear entry in history to undo it.": "इस खाते का बैलेंस शून्य हो जाएगा। इसे वापस करने के लिए इतिहास से बैलेंस शून्य करने वाली एंट्री हटाएँ।",
   "Delete this entry to undo the balance adjustment.": "बैलेंस समायोजन वापस करने के लिए यह एंट्री हटाएँ।",
   "No": "नहीं",
-  "Yes": "हाँ"
+  "Yes": "हाँ",
+  "Allow UPI notification access": "UPI सूचनाएँ पढ़ने की अनुमति दें",
+  "Android Notification access lets QuickSpend read payment alerts from apps like Google Pay and PhonePe, even when your bank does not send an SMS. QuickSpend checks supported payment alerts and keeps the details in Review. Your backup settings apply.": "Android की सूचना अनुमति से QuickSpend, Google Pay और PhonePe जैसे ऐप की भुगतान सूचनाएँ पढ़ सकता है, भले ही बैंक SMS न भेजे। QuickSpend समर्थित भुगतान सूचनाओं की जाँच करता है और उनका विवरण समीक्षा में रखता है। आपकी बैकअप सेटिंग लागू होती हैं।",
+  "Allow QuickSpend to display over other apps. Once allowed, quick capture starts automatically whenever you open QuickSpend. A shortcut appears for bank and UPI payments. You can turn it off in Settings.": "QuickSpend को दूसरे ऐप्स के ऊपर दिखने दें। अनुमति मिलने पर QuickSpend खोलते ही क्विक कैप्चर चालू हो जाएगा। बैंक और UPI भुगतान के लिए शॉर्टकट दिखेगा। इसे सेटिंग्स में बंद कर सकते हैं।",
+  "Permission is required to continue.": "आगे बढ़ने के लिए अनुमति ज़रूरी है।",
+  "Could not check permissions. Please try again.": "अनुमतियाँ जाँची नहीं जा सकीं। फिर कोशिश करें।",
+  "Switch on Allow display over other apps for QuickSpend, then return.": "QuickSpend के लिए दूसरे ऐप्स के ऊपर दिखने की अनुमति चालू करें, फिर वापस आएँ।",
+  "In Android Notification access, select QuickSpend and turn on access, then return.": "Android की सूचना ऐक्सेस सेटिंग में QuickSpend चुनें, अनुमति चालू करें और वापस आएँ।",
+  "Allow QuickSpend notifications in Android Settings, then return.": "Android सेटिंग में QuickSpend की सूचनाओं की अनुमति दें और वापस आएँ।",
+  "In Android app settings, tap Permissions, then SMS, and select Allow.": "Android ऐप सेटिंग में अनुमतियाँ चुनें, फिर SMS और अनुमति दें चुनें।",
+  "Open app settings": "ऐप सेटिंग खोलें",
+  "Could not open settings.": "सेटिंग नहीं खुल सकी।"
 }

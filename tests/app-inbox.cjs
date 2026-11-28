@@ -1,7 +1,7 @@
 const fs=require('fs'),vm=require('vm'),assert=require('assert'),path=require('path');
 const html=fs.readFileSync(path.join(__dirname,'../index.html'),'utf8');
 const script=html.split('<script>')[1].split('</script>')[0];
-function app({seen=true,broken=false,savedLanguage=null,languageFails=false,savedState=null,accountApi=null,savedColorMode=null,tabs=false}={}){
+function app({seen=true,broken=false,savedLanguage=null,languageFails=false,savedState=null,accountApi=null,savedColorMode=null,tabs=false,permissionApi=null}={}){
  const nodes=new Map(),listeners={},documentListeners={};function node(s){if(!nodes.has(s)){const classes=new Set();nodes.set(s,{innerHTML:'',textContent:'',style:{},classList:{add:x=>classes.add(x),remove:x=>classes.delete(x),contains:x=>classes.has(x),toggle(x,force){const on=force===undefined?!classes.has(x):force;if(on)classes.add(x);else classes.delete(x);return on}},attrs:{},setAttribute(k,v){this.attrs[k]=v},getAttribute(k){return this.attrs[k]??null},click(){this.onclick?.()},focus(){c.document.activeElement=this},listeners:{},addEventListener(name,fn){this.listeners[name]=fn},contains(target){return target===this||target?.inSheet===true},dataset:{}})}return nodes.get(s)}
  const data=new Map(seen?[['qs_ob','1'],['qs_p2','1']]:[]);if(savedLanguage)data.set('qs_language',savedLanguage);if(savedColorMode)data.set('qs_color_mode',savedColorMode);if(savedState)data.set('qs1',savedState);let completed=[],acks=[];
  const inbox={items:[{sourceKey:'payment',from:'HDFC',body:'Rs.125 debited at Shop on today',amount:125,ts:Date.now()}],entries:[]};
@@ -12,6 +12,9 @@ function app({seen=true,broken=false,savedLanguage=null,languageFails=false,save
   if(m==='drain'){if(broken)throw Error('Inbox unavailable');return inbox}
   if(m==='completeSms'){completed.push(o.sourceKey);inbox.items=inbox.items.filter(x=>x.sourceKey!==o.sourceKey);return{}}
   if(m==='acknowledgeSaved'){acks.push(...o.keys);inbox.entries=inbox.entries.filter(x=>!o.keys.includes(x.nativeKey));return{}}
+  if(permissionApi?.[m])return permissionApi[m](o)
+  if(m==='status')return{notif:true,sms:true};
+  if(m==='upiCaptureStatus')return{allowed:true,enabled:true};
   if(m==='overlayStatus')return{allowed:true,enabled:true,running:true};return{}
  }},addEventListener:(event,fn)=>{const previous=listeners[event];listeners[event]=previous?(...args)=>{previous(...args);fn(...args)}:fn}},setInterval(){},setTimeout(){},clearTimeout(){},confirm:()=>true,alert(){}};
  vm.createContext(c);vm.runInContext(script,c);
@@ -20,7 +23,7 @@ function app({seen=true,broken=false,savedLanguage=null,languageFails=false,save
 const settle=()=>new Promise(r=>setImmediate(r));
 module.exports={app,settle};
 if(require.main===module)(async()=>{
- let a=app({seen:false});await settle();assert.equal(a.eval('pending.length'),1);a.eval('endOb()');assert.equal(a.eval('pending.length'),1,'Completing onboarding must preserve incoming payment');
+ let a=app({seen:false});await settle();assert.equal(a.eval('pending.length'),1);await a.c.endOb();assert.equal(a.eval('pending.length'),1,'Completing onboarding must preserve incoming payment');
  a.eval('openSheet(pending[0])');assert.equal(a.eval('cur.cat'),'Uncategorised');a.eval('save()');await settle();assert.equal(a.eval('tx.length'),1);assert.equal(a.eval('tx[0].c'),'Uncategorised');assert.equal(a.eval('pending.length'),0);assert.match(a.nodes.get('#s-review').innerHTML,/Saved · needs a category/);
  a.eval("openSavedReview(tx[0].id);cur.cat='Food';save()");assert.equal(a.eval('tx.length'),1);assert.equal(a.eval('tx[0].c'),'Food');assert.equal(a.eval('tx[0].sourceKey'),'payment');
  a.inbox.items.push({sourceKey:'after-resume',from:'SBI',body:'Rs.50 debited at Cafe on today',ts:Date.now()});a.listeners.quickspendResume();await settle();assert.equal(a.eval('pending.length'),1,'Native Android resume must refresh Review');

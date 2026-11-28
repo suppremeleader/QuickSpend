@@ -6,6 +6,7 @@ import java.util.regex.Pattern;
 /** A conservative parser for completed payment alerts from recognized UPI apps. */
 public final class UpiPayment {
     static final String PHONEPE_PACKAGE = "com.phonepe.app";
+    private static final String GPAY_PACKAGE = "com.google.android.apps.nbu.paisa.user";
     static final String KEY_PREFIX = "upi:";
     static final long DUPLICATE_WINDOW_MS = 120_000L;
 
@@ -15,8 +16,11 @@ public final class UpiPayment {
     private static final int FLAGS = Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE;
     private static final Pattern PHONEPE_RECEIVED = Pattern.compile(
             "^(" + NAME + ") has sent " + MONEY + " to your bank account (" + NAME + ")[-–]([0-9]{4})\\.?$", FLAGS);
+    private static final Pattern GPAY_RECEIVED = Pattern.compile(
+            "^(" + NAME + ") paid you " + MONEY + "\\.?$", FLAGS);
     private static final Pattern REJECT = Pattern.compile(
             "\\b(?:failed|failure|declined|unsuccessful|pending|processing|request(?:ed|ing)?|collect|otp|verification|offer|reward|cashback|scheduled|reminder|mandate|balance|refund|reversal|cancelled|canceled|due|pay now|will be|not paid|not sent|not received|could not)\\b", FLAGS);
+    private static final Pattern DEBIT_TITLE = Pattern.compile("\\b(?:money sent|payment sent|debited)\\b", FLAGS);
     private static final Pattern INCOMING = Pattern.compile(
             "^(?:(?:you (?:have )?)?received " + MONEY + "|" + MONEY + " (?:was )?received) from (" + NAME + ")\\.?$", FLAGS);
     private static final Pattern OUTGOING = Pattern.compile(
@@ -40,7 +44,7 @@ public final class UpiPayment {
         if (packageName == null) return null;
         switch (packageName) {
             case PHONEPE_PACKAGE: return "PhonePe";
-            case "com.google.android.apps.nbu.paisa.user": return "Google Pay";
+            case GPAY_PACKAGE: return "Google Pay";
             case "net.one97.paytm": return "Paytm";
             case "in.org.npci.upiapp": return "BHIM";
             case "com.dreamplug.androidapp": return "CRED";
@@ -71,7 +75,12 @@ public final class UpiPayment {
         String app = appName(packageName);
         if (app == null || title == null || title.length() > 160 || body == null || body.length() > 512) return null;
         String text = body.replaceAll("[\\s\\u00a0]+", " ").trim();
-        if (REJECT.matcher(title + " " + text).find()) return null;
+        if (hasRejectedStatus(title + " " + text)) return null;
+        if (GPAY_PACKAGE.equals(packageName) && !DEBIT_TITLE.matcher(title).find()) {
+            Matcher received = GPAY_RECEIVED.matcher(title.replaceAll("[\\s\\u00a0]+", " ").trim());
+            if (!received.matches()) received = GPAY_RECEIVED.matcher(text);
+            if (received.matches()) return payment(received.group(2), "Income", received.group(1), "", app);
+        }
         if (PHONEPE_PACKAGE.equals(packageName) && "Money received".equalsIgnoreCase(title.trim())) {
             Matcher matched = PHONEPE_RECEIVED.matcher(text);
             if (matched.matches()) {
@@ -82,7 +91,7 @@ public final class UpiPayment {
         if (needsUpiMarker(packageName) && !UPI_MARKER.matcher(title).find()) return null;
         if ("com.whatsapp".equals(packageName) && !WHATSAPP_PAYMENT_TITLE.matcher(title.trim()).matches()) return null;
         Matcher incoming = INCOMING.matcher(text);
-        if (incoming.matches() && !title.matches("(?iu).*\\b(?:money sent|payment sent|debited)\\b.*")) {
+        if (incoming.matches() && !DEBIT_TITLE.matcher(title).find()) {
             return payment(amount(incoming), "Income", incoming.group(3), "", app);
         }
         Matcher outgoing = OUTGOING.matcher(text);
@@ -90,6 +99,10 @@ public final class UpiPayment {
             return payment(amount(outgoing), "Expense", outgoing.group(3), "", app);
         }
         return null;
+    }
+
+    static boolean hasRejectedStatus(String text) {
+        return REJECT.matcher(text.replaceAll("[\\s\\u00a0]+", " ")).find();
     }
 
     private static String amount(Matcher match) {

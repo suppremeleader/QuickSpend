@@ -46,10 +46,14 @@ public final class PhonePeNotificationListener extends NotificationListenerServi
                 || Notification.CATEGORY_PROGRESS.equals(notice.category)) return;
         try {
             String title = text(notice.extras, Notification.EXTRA_TITLE);
-            UpiPayment payment = UpiPayment.parse(posted.getPackageName(), title,
-                    text(notice.extras, Notification.EXTRA_BIG_TEXT));
-            if (payment == null) payment = UpiPayment.parse(posted.getPackageName(), title,
-                    text(notice.extras, Notification.EXTRA_TEXT));
+            String body = text(notice.extras, Notification.EXTRA_TEXT);
+            String expanded = text(notice.extras, Notification.EXTRA_BIG_TEXT);
+            // Check for payment status in both versions when Android supplies both.
+            if (UpiPayment.hasRejectedStatus(body) || UpiPayment.hasRejectedStatus(expanded)) return;
+            UpiPayment payment = UpiPayment.parse(posted.getPackageName(), title, expanded.isEmpty() ? body : expanded);
+            if (payment == null && !expanded.isEmpty()) {
+                payment = UpiPayment.parse(posted.getPackageName(), title, body);
+            }
             if (payment == null) return;
             long stamp = notice.when > 0 ? notice.when : posted.getPostTime();
             String identity = posted.getKey() + "|" + stamp + "|" + payment.kind + "|" + payment.amount + "|" + payment.counterparty + "|" + payment.account;

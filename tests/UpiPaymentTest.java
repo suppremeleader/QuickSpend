@@ -12,6 +12,18 @@ public final class UpiPaymentTest {
                 && phonepe.account.equals("Central Bank Of India 1234"), "Keep confirmed PhonePe format and bank");
         UpiPayment gpay = UpiPayment.parse("com.google.android.apps.nbu.paisa.user", "Payment successful", "You paid ₹250.50 to Example Shop");
         check(gpay != null && gpay.amount == 250.50 && gpay.kind.equals("Expense") && gpay.app.equals("Google Pay"), "Parse an explicit completed outgoing format");
+        String receivedTitle = "EXAMPLE SENDER paid you ₹1.00";
+        UpiPayment gpayReceived = UpiPayment.parse("com.google.android.apps.nbu.paisa.user", receivedTitle, "Tap to view.");
+        check(gpayReceived != null && gpayReceived.amount == 1 && gpayReceived.kind.equals("Income")
+                && gpayReceived.counterparty.equals("EXAMPLE SENDER") && gpayReceived.account.isEmpty(), "Read the GPay receipt title");
+        check(UpiPayment.parse("com.google.android.apps.nbu.paisa.user", "Money received", receivedTitle) != null,
+                "Read a GPay receipt in the notification body");
+        check(UpiPayment.parse("com.google.android.apps.nbu.paisa.user", receivedTitle, "Payment pending") == null,
+                "Reject pending even when a title resembles a receipt");
+        check(UpiPayment.parse("com.google.android.apps.nbu.paisa.user", "Money sent", receivedTitle) == null,
+                "Reject conflicting GPay direction");
+        check(UpiPayment.parse("net.one97.paytm", receivedTitle, "Tap to view.") == null,
+                "Keep the GPay-specific title scoped to its Android package");
         UpiPayment paytm = UpiPayment.parse("net.one97.paytm", "Payment received", "₹1,23,456.78 received from Example Sender");
         check(paytm != null && paytm.amount == 123456.78 && paytm.kind.equals("Income"), "Parse Indian number grouping");
         check(UpiPayment.parse("in.org.npci.upiapp", "Money received", "You received Rs. 20 from Example Sender") != null, "Accept BHIM package and explicit receipt format");
